@@ -1,12 +1,11 @@
 #include "server.h"
-//#include <mutex>
-//#include <chrono>
-//
-//std::mutex mtx;
-//
-//using namespace std::chrono_literals;
-Server::Server(io_service& service) : service_{ service }, acceptor_{ service, ip::tcp::endpoint(boost::asio::ip::address::from_string("127.0.0.1"), 10678) }
+#include "json/json.h"
+#include <iostream>
+
+Server::Server(io_service& service) : service_{ service }, acceptor_{ service, ip::tcp::endpoint(boost::asio::ip::address::from_string("127.0.0.1"), 10678) },
+databaseInstance{ DatabaseHandler::getInstance() }
 {
+    databaseInstance.connectDB("Server", "123");
     startAccept();
 }
 
@@ -33,15 +32,40 @@ void Server::readConnection(std::shared_ptr<IConnectionHandler<Server>> connecti
         return;
     }
     std::string data{ boost::asio::buffer_cast<const char*>(connection->getStrBuf()->data()) };
-    //verificateHash() TODO
-    connection->getStrBuf().reset(new boost::asio::streambuf);
-    connection->setMutableBuffer();
-    connection->callRead();
+    if (auto result{ verificateHash(data) }; result != std::nullopt) {
+        Client tempClient( result.value()[0][1], std::stoll(result.value()[0][0]), std::move(connection->getIoService()) );
+        clients_.insert({ tempClient.getId(), tempClient });
+        //tempClient.getConnection()->setReadCallback(&Server::readHandleTest);
+        try {
+            connection.reset();
+            tempClient.getConnection()->getStrBuf().reset(new boost::asio::streambuf);
+            tempClient.getConnection()->setMutableBuffer();
+            tempClient.getConnection()->callRead();
+            //tempClient.getConnection()->callWrite("kuku");
+        }
+        catch (std::exception& ex) {
+            std::cout << ex.what();
+        }
+    }
 }
 
 void Server::writeCallback(std::shared_ptr<IConnectionHandler<Server>> connection, const boost::system::error_code& err, size_t bytes_transferred)
 {
 
+}
+
+std::optional<std::vector<std::vector<std::string>>> Server::verificateHash(const std::string& hash)
+{
+    auto result{ databaseInstance.executeQuery("SELECT ID, LOGIN FROM CONTACTS WHERE TOKEN = '" + hash + "'")};
+    if (result.empty()) {
+        return std::nullopt;
+    }
+    return result;
+}
+
+void Server::readHandleTest(std::shared_ptr<IConnectionHandler<Server>> connection, const boost::system::error_code& err, size_t bytes_transferred)
+{
+    std::cout << "test call back\n";
 }
 
 //void Server::writer(std::string str, unsigned long long idTo, unsigned long long idFrom)
@@ -66,17 +90,5 @@ void Server::writeCallback(std::shared_ptr<IConnectionHandler<Server>> connectio
 //        Json::FastWriter writer;
 //        tmpValue["online"] = "true";
 //        clientTo->get()->writeMessage(writer.write(tmpValue));
-//    }
-//}
-//
-//void Server::checker()
-//{
-//    while (true) {
-//        mtx.lock();
-//        for (auto& n : connections) {
-//            std::cout << std::boolalpha <<n->getSocket().is_open() << " id: " << n->getId() << "\n";
-//        }
-//        mtx.unlock();
-//        std::this_thread::sleep_for(5s);
 //    }
 //}
