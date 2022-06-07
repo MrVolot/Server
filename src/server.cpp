@@ -1,5 +1,4 @@
 #include "server.h"
-#include "json/json.h"
 #include <iostream>
 
 Server::Server(io_service& service) : service_{ service }, acceptor_{ service, ip::tcp::endpoint(boost::asio::ip::address::from_string("127.0.0.1"), 10678) },
@@ -19,10 +18,11 @@ void Server::handleAccept(std::shared_ptr<IConnectionHandler<Server>> connection
 
 void Server::startAccept()
 {
-    connections.push_back(std::make_shared<ConnectionHandler<Server>>(service_, *this));
-    connections.back()->setReadCallback(&Server::readConnection);
-    connections.back()->setWriteCallback(&Server::writeCallback);
-    acceptor_.async_accept(connections.back()->getSocket(), boost::bind(&Server::handleAccept, this, connections.back(),boost::asio::placeholders::error));
+    connections_.insert({ "test", std::make_pair(nullptr, std::make_shared<ConnectionHandler<Server>>(service_, *this))});
+    connections_.at("test").second->setReadCallback(&Server::readConnection);
+    connections_.at("test").second->setWriteCallback(&Server::writeCallback);
+    acceptor_.async_accept(connections_.at("test").second->getSocket(), boost::bind(&Server::handleAccept, this, connections_.at("test").second,boost::asio::placeholders::error));
+    connections_.erase("test");
 }
 
 void Server::readConnection(std::shared_ptr<IConnectionHandler<Server>> connection, const boost::system::error_code& err, size_t bytes_transferred)
@@ -33,15 +33,16 @@ void Server::readConnection(std::shared_ptr<IConnectionHandler<Server>> connecti
     }
     std::string data{ boost::asio::buffer_cast<const char*>(connection->getStrBuf()->data()) };
     if (auto result{ verificateHash(data) }; result != std::nullopt) {
-        Client tempClient( result.value()[0][1], std::stoll(result.value()[0][0]), std::move(connection->getIoService()) );
-        clients_.insert({ tempClient.getId(), tempClient });
-        //tempClient.getConnection()->setReadCallback(&Server::readHandleTest);
+        std::unique_ptr<Client> tempClient{ new Client {result.value()[0][1], std::stoull(result.value()[0][0])} };
+        std::string clientName{ tempClient->getName() };
+        connections_.insert({ tempClient->getName(), std::make_pair(std::move(tempClient),connection) });
+        connections_.at(clientName).second->setReadCallback(&Server::readHandleTest);
         try {
-            connection.reset();
-            tempClient.getConnection()->getStrBuf().reset(new boost::asio::streambuf);
-            tempClient.getConnection()->setMutableBuffer();
-            tempClient.getConnection()->callRead();
-            //tempClient.getConnection()->callWrite("kuku");
+            //connection.reset();
+            connections_.at(clientName).second->getStrBuf().reset(new boost::asio::streambuf);
+            connections_.at(clientName).second->setMutableBuffer();
+            connections_.at(clientName).second->callRead();
+            connections_.at(clientName).second->callWrite("kuku");
         }
         catch (std::exception& ex) {
             std::cout << ex.what();

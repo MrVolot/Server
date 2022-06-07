@@ -14,9 +14,8 @@ class Server
 {
     boost::asio::io_service& service_;
     boost::asio::ip::tcp::acceptor acceptor_;
-    inline static std::vector<std::shared_ptr<IConnectionHandler<Server>>> connections;
+    std::unordered_map<std::string, std::pair<std::unique_ptr<Client>, std::shared_ptr<IConnectionHandler<Server>>>> connections_;
     DatabaseHandler& databaseInstance;
-    std::unordered_map<long long, Client> clients_;
 public:
     Server(boost::asio::io_service &service);
     void handleAccept(std::shared_ptr<IConnectionHandler<Server>> connection, const boost::system::error_code& err);
