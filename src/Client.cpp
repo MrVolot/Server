@@ -1,13 +1,22 @@
 #include "Client.h"
-
-Client::Client(std::string name_, unsigned long long id_) : name{name_}, id{ id_ } {}
-
-unsigned long long Client::getId()
+#include <iostream>
+Client::Client(std::string name, unsigned long long id) :
+	name_{ name }, id_{ id }
 {
-	return id;
+
+}
+
+unsigned long long Client::getId() const
+{
+	return id_;
 }
 
 std::string& Client::getName()
 {
-	return name;
+	return name_;
+}
+
+bool Client::operator==(const Client& rhs) const
+{
+	return rhs.name_ == name_;
 }
