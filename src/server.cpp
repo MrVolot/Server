@@ -1,5 +1,6 @@
 #include "server.h"
 #include <iostream>
+#include "json/json.h"
 
 Server::Server(io_service& service) : service_{ service }, acceptor_{ service, ip::tcp::endpoint(boost::asio::ip::address::from_string("127.0.0.1"), 10678) },
 databaseInstance{ DatabaseHandler::getInstance() }
@@ -36,13 +37,14 @@ void Server::readConnection(std::shared_ptr<IConnectionHandler<Server>> connecti
         std::unique_ptr<Client> tempClient{ new Client {result.value()[0][1], std::stoull(result.value()[0][0])} };
         std::string clientName{ tempClient->getName() };
         connections_.insert({ tempClient->getName(), std::make_pair(std::move(tempClient),connection) });
-        connections_.at(clientName).second->setReadCallback(&Server::readHandleTest);
+        connections_.at(clientName).second->setReadCallback(&Server::callBackReadCommand);
+        //connections_.at(clientName).second->setReadCallback(&Server::readHandleTest);
         try {
             //connection.reset();
             connections_.at(clientName).second->getStrBuf().reset(new boost::asio::streambuf);
             connections_.at(clientName).second->setMutableBuffer();
             connections_.at(clientName).second->callRead();
-            connections_.at(clientName).second->callWrite("kuku");
+            //connections_.at(clientName).second->callWrite("kuku");
         }
         catch (std::exception& ex) {
             std::cout << ex.what();
@@ -64,9 +66,21 @@ std::optional<std::vector<std::vector<std::string>>> Server::verificateHash(cons
     return result;
 }
 
-void Server::readHandleTest(std::shared_ptr<IConnectionHandler<Server>> connection, const boost::system::error_code& err, size_t bytes_transferred)
+void Server::callBackReadCommand(std::shared_ptr<IConnectionHandler<Server>> connection, const boost::system::error_code& err, size_t bytes_transferred)
 {
-    std::cout << "test call back\n";
+    Json::Value value;
+    Json::Reader reader;
+    std::string data{ boost::asio::buffer_cast<const char*>(connection->getStrBuf()->data()) };
+    reader.parse(data, value);
+    if (value["command"].asString() == "sendMessage") {
+        sendMessageToClient(value["to"].asString(), value["what"].asString());
+        return;
+    }
+}
+
+void Server::sendMessageToClient(const std::string& whom, const std::string& what)
+{
+    connections_.at(whom).second->callWrite(what);
 }
 
 //void Server::writer(std::string str, unsigned long long idTo, unsigned long long idFrom)

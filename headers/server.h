@@ -23,8 +23,9 @@ public:
     void readConnection(std::shared_ptr<IConnectionHandler<Server>> connection, const boost::system::error_code& err, size_t bytes_transferred);
     void writeCallback(std::shared_ptr<IConnectionHandler<Server>> connection, const boost::system::error_code& err, size_t bytes_transferred);
     std::optional<std::vector<std::vector<std::string>>> verificateHash(const std::string& hash);
-    void readHandleTest(std::shared_ptr<IConnectionHandler<Server>> connection, const boost::system::error_code& err, size_t bytes_transferred);
     static void writer(std::string str, unsigned long long idTo, unsigned long long idFrom);
     static void sendOnlineResponse(unsigned long long id);
+    void callBackReadCommand(std::shared_ptr<IConnectionHandler<Server>> connection, const boost::system::error_code& err, size_t bytes_transferred);
+    void sendMessageToClient(const std::string& whom, const std::string& what);
 };
 
