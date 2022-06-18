@@ -6,6 +6,7 @@
 #include "Database.h"
 #include "ConnectionHandler.h"
 #include "Client.h"
+#include <mutex>
 
 using namespace boost::asio;
 
@@ -16,6 +17,7 @@ class Server
     boost::asio::ip::tcp::acceptor acceptor_;
     std::unordered_map<std::string, std::pair<std::unique_ptr<Client>, std::shared_ptr<IConnectionHandler<Server>>>> connections_;
     DatabaseHandler& databaseInstance;
+    std::mutex mutex;
 public:
     Server(boost::asio::io_service &service);
     void handleAccept(std::shared_ptr<IConnectionHandler<Server>> connection, const boost::system::error_code& err);
@@ -25,7 +27,10 @@ public:
     std::optional<std::vector<std::vector<std::string>>> verificateHash(const std::string& hash);
     static void writer(std::string str, unsigned long long idTo, unsigned long long idFrom);
     static void sendOnlineResponse(unsigned long long id);
-    void callBackReadCommand(std::shared_ptr<IConnectionHandler<Server>> connection, const boost::system::error_code& err, size_t bytes_transferred);
-    void sendMessageToClient(const std::string& whom, const std::string& what);
+    void callbackReadCommand(std::shared_ptr<IConnectionHandler<Server>> connection, const boost::system::error_code& err, size_t bytes_transferred);
+    void sendMessageToClient(const std::string& to, const std::string& what, const std::string& from);
+    void loadUsers();
+    Client& findClientByConnection(std::shared_ptr<IConnectionHandler<Server>> connection);
+    void pingClient();
 };
 

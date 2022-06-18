@@ -10,4 +10,6 @@ public:
 	unsigned long long getId() const;
 	std::string& getName();
 	bool operator==(const Client& rhs) const;
+	
+	bool onlineStatus;
 };

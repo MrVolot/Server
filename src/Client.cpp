@@ -1,7 +1,7 @@
 #include "Client.h"
 #include <iostream>
 Client::Client(std::string name, unsigned long long id) :
-	name_{ name }, id_{ id }
+	name_{ name }, id_{ id }, onlineStatus{false}
 {
 
 }
