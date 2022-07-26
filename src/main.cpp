@@ -11,7 +11,6 @@ int main()
         Server server{ io_service };
         boost::optional<boost::asio::io_service::work> work;
         work.emplace(io_service);
-        //work = boost::none;
         io_service.run();
     }
     catch (std::exception& ex) {
