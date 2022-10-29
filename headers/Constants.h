@@ -19,3 +19,6 @@ enum credentialsStatus {
 
 	ERROR_
 };
+
+#define SENDMESSAGE 0x0001
+#define FRIENDLIST 0x0002

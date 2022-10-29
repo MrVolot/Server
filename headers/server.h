@@ -18,6 +18,10 @@ class Server
     std::unordered_map<std::string, std::pair<std::unique_ptr<Client>, std::shared_ptr<IConnectionHandler<Server>>>> connections_;
     DatabaseHandler& databaseInstance;
     std::mutex mutex;
+
+    std::string getJsonFriendList(const std::string& id);
+    void sendFriendList(std::shared_ptr<IConnectionHandler<Server>> connection, const std::string& userId);
+    void closeClientConnection(std::shared_ptr<IConnectionHandler<Server>> connection);
 public:
     Server(boost::asio::io_service &service);
     void handleAccept(std::shared_ptr<IConnectionHandler<Server>> connection, const boost::system::error_code& err);
