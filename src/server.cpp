@@ -1,7 +1,6 @@
 ﻿#include "server.h"
 #include "json/json.h"
 #include "Constants.h"
-#include <iostream>
 
 Server::Server(io_service& service) : service_{ service }, acceptor_{ service, ip::tcp::endpoint(boost::asio::ip::address::from_string("127.0.0.1"), 10690) },
 databaseInstance{ DatabaseHandler::getInstance() }
@@ -33,9 +32,8 @@ void Server::readConnection(std::shared_ptr<IConnectionHandler<Server>> connecti
 		connection->getSocket().close();
 		return;
 	}
-	std::string data{ boost::asio::buffer_cast<const char*>(connection->getStrBuf()->data()) };
 	std::lock_guard<std::mutex> guard(mutex);
-	if (auto result{ verificateHash(data) }; result != std::nullopt) {
+	if (auto result{ verificateHash(connection->getData()) }; result != std::nullopt) {
 		std::string clientName{ result.value()[0][0] };
 		if (auto user{ connections_.find(clientName) }; user != connections_.end()) {
 			user->second.second = std::move(connection);
@@ -58,12 +56,10 @@ void Server::readConnection(std::shared_ptr<IConnectionHandler<Server>> connecti
 
 void Server::writeCallback(std::shared_ptr<IConnectionHandler<Server>> connection, const boost::system::error_code& err, size_t bytes_transferred)
 {
-	std::cout << "ERROR: " << err.what() <<"\n";
 	if (err) {
 		closeClientConnection(connection);
 		return;
 	}
-	std::cout << " Bytes: " << bytes_transferred<<"\n";
 }
 
 std::optional<std::vector<std::vector<std::string>>> Server::verificateHash(const std::string& hash)
@@ -113,18 +109,17 @@ void Server::pingClient()
 void Server::callbackReadCommand(std::shared_ptr<IConnectionHandler<Server>> connection, const boost::system::error_code& err, size_t bytes_transferred)
 {
 	if (err) {
-		std::cout << "ERROR: "<< err.what() << "\n";
 		closeClientConnection(connection);
 		return;
 	}
 	std::lock_guard<std::mutex> guard(mutex);
 	Json::Value value;
 	Json::Reader reader;
-	std::string data{ boost::asio::buffer_cast<const char*>(connection->getStrBuf()->data()) };
-	reader.parse(data, value);
+	reader.parse(connection->getData(), value);
+	connection->setMutableBuffer();
 	auto client{ findClientByConnection(connection) };
 	if (value["command"].asString() == "sendMessage") {
-		sendMessageToClient(value["receiver"].asString(), value["message"].asString(), client.getName());
+		sendMessageToClient(value["receiver"].asString(), value["message"].asString(), std::to_string(client.getId()));
 		connection->callAsyncRead();
 		return;
 	}
