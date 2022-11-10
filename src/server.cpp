@@ -47,7 +47,7 @@ void Server::readConnection(std::shared_ptr<IConnectionHandler<Server>> connecti
 		auto clientId = connections_.at(clientName).first->getId();
 		connections_.at(clientName).second->setAsyncReadCallback(&Server::callbackReadCommand);
 		connections_.at(clientName).second->getStrBuf().reset(new boost::asio::streambuf);
-		connections_.at(clientName).second->setMutableBuffer();
+		connections_.at(clientName).second->resetStrBuf();
 		connections_.at(clientName).second->callAsyncRead();
 		auto user{ connections_.find(clientName) };
 		sendFriendList(user->second.second, std::to_string(clientId));
@@ -116,7 +116,7 @@ void Server::callbackReadCommand(std::shared_ptr<IConnectionHandler<Server>> con
 	Json::Value value;
 	Json::Reader reader;
 	reader.parse(connection->getData(), value);
-	connection->setMutableBuffer();
+	connection->resetStrBuf();
 	auto client{ findClientByConnection(connection) };
 	if (value["command"].asString() == "sendMessage") {
 		sendMessageToClient(value["receiver"].asString(), value["message"].asString(), std::to_string(client.getId()));
