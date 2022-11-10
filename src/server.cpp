@@ -1,5 +1,6 @@
 ﻿#include "server.h"
 #include "json/json.h"
+#include "Constants.h"
 
 Server::Server(io_service& service) : service_{ service }, acceptor_{ service, ip::tcp::endpoint(boost::asio::ip::address::from_string("127.0.0.1"), 10690) },
 databaseInstance{ DatabaseHandler::getInstance() }
@@ -31,10 +32,9 @@ void Server::readConnection(std::shared_ptr<IConnectionHandler<Server>> connecti
 		connection->getSocket().close();
 		return;
 	}
-	std::string data{ boost::asio::buffer_cast<const char*>(connection->getStrBuf()->data()) };
 	std::lock_guard<std::mutex> guard(mutex);
-	if (auto result{ verificateHash(data) }; result != std::nullopt) {
-		std::string clientName{ result.value()[0][1] };
+	if (auto result{ verificateHash(connection->getData()) }; result != std::nullopt) {
+		std::string clientName{ result.value()[0][0] };
 		if (auto user{ connections_.find(clientName) }; user != connections_.end()) {
 			user->second.second = std::move(connection);
 			user->second.first->onlineStatus = true;
@@ -44,20 +44,21 @@ void Server::readConnection(std::shared_ptr<IConnectionHandler<Server>> connecti
 			tempClient->onlineStatus = true;
 			connections_.insert({ tempClient->getName(), std::make_pair(std::move(tempClient),connection) });
 		}
+		auto clientId = connections_.at(clientName).first->getId();
 		connections_.at(clientName).second->setAsyncReadCallback(&Server::callbackReadCommand);
 		connections_.at(clientName).second->getStrBuf().reset(new boost::asio::streambuf);
 		connections_.at(clientName).second->setMutableBuffer();
 		connections_.at(clientName).second->callAsyncRead();
+		auto user{ connections_.find(clientName) };
+		sendFriendList(user->second.second, std::to_string(clientId));
 	}
 }
 
 void Server::writeCallback(std::shared_ptr<IConnectionHandler<Server>> connection, const boost::system::error_code& err, size_t bytes_transferred)
 {
 	if (err) {
-		auto client{ findClientByConnection(connection) };
-		std::lock_guard<std::mutex> guard(mutex);
-		connections_.at(client.getName()).first->onlineStatus = false;
-		connections_.at(client.getName()).second = nullptr;
+		closeClientConnection(connection);
+		return;
 	}
 }
 
@@ -76,7 +77,7 @@ void Server::loadUsers()
 	std::lock_guard<std::mutex> guard(mutex);
 	for (auto& n : result) {
 		std::unique_ptr<Client> tempClient{ new Client {n[1], std::stoull(n[0])} };
-		connections_.insert({ tempClient->getName(), std::make_pair(std::move(tempClient), nullptr) });
+		connections_.insert({ std::to_string(tempClient->getId()), std::make_pair(std::move(tempClient), nullptr) });
 	}
 	std::thread trd{ &Server::pingClient, this };
 	trd.detach();
@@ -84,9 +85,10 @@ void Server::loadUsers()
 
 Client& Server::findClientByConnection(std::shared_ptr<IConnectionHandler<Server>> connection)
 {
-	std::lock_guard<std::mutex> guard(mutex);
 	auto client{ std::find_if(connections_.begin(), connections_.end(), [connection](const auto& con) {return con.second.second == connection; }) };
-	return *client->second.first.get();
+	if (client != connections_.end()) {
+		return *client->second.first.get();
+	}
 }
 
 void Server::pingClient()
@@ -106,27 +108,67 @@ void Server::pingClient()
 
 void Server::callbackReadCommand(std::shared_ptr<IConnectionHandler<Server>> connection, const boost::system::error_code& err, size_t bytes_transferred)
 {
+	if (err) {
+		closeClientConnection(connection);
+		return;
+	}
+	std::lock_guard<std::mutex> guard(mutex);
 	Json::Value value;
 	Json::Reader reader;
-	std::string data{ boost::asio::buffer_cast<const char*>(connection->getStrBuf()->data()) };
-	reader.parse(data, value);
+	reader.parse(connection->getData(), value);
+	connection->setMutableBuffer();
 	auto client{ findClientByConnection(connection) };
 	if (value["command"].asString() == "sendMessage") {
-		sendMessageToClient(value["to"].asString(), value["what"].asString(), client.getName());
+		sendMessageToClient(value["receiver"].asString(), value["message"].asString(), std::to_string(client.getId()));
+		connection->callAsyncRead();
 		return;
 	}
 }
 
 void Server::sendMessageToClient(const std::string& to, const std::string& what, const std::string& from)
 {
-	std::lock_guard<std::mutex> guard(mutex);
 	auto foundUser{ connections_.find(to) };
 	if (foundUser != connections_.end() && foundUser->second.first->onlineStatus) {
 		Json::Value value;
 		Json::FastWriter writer;
-		value["who"] = foundUser->second.first->getName();
-		value["what"] = what;
-		value["from"] = from;
+		value["command"] = SENDMESSAGE;
+		value["receiver"] = std::to_string(foundUser->second.first->getId());
+		value["message"] = what;
+		value["sender"] = from;
 		connections_.at(to).second->callWrite(writer.write(value));
 	}
+}
+
+std::string Server::getJsonFriendList(const std::string& id)
+{
+	std::string tableName{ "FL_" + id };
+	std::string query{ "SELECT * FROM " + tableName };
+	auto result{ DatabaseHandler::getInstance().executeQuery(query) };
+	if (result.empty()) {
+		return "";
+	}
+	Json::Value value;
+	Json::FastWriter writer;
+	for (auto row : result) {
+		value[row[0]] = row[1];
+	}
+	return writer.write(value);
+}
+
+void Server::sendFriendList(std::shared_ptr<IConnectionHandler<Server>> connection, const std::string& userId)
+{
+	Json::Value value;
+	Json::FastWriter writer;
+	Json::Reader reader;
+	reader.parse(getJsonFriendList(userId), value);
+	value["command"] = FRIENDLIST;
+	connection->callWrite(writer.write(value));
+}
+
+void Server::closeClientConnection(std::shared_ptr<IConnectionHandler<Server>> connection)
+{
+	std::lock_guard<std::mutex> guard(mutex);
+	auto client{ findClientByConnection(connection) };
+	connections_.at(std::to_string(client.getId())).first->onlineStatus = false;
+	connections_.at(std::to_string(client.getId())).second = nullptr;
 }
