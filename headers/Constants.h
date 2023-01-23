@@ -22,3 +22,4 @@ enum credentialsStatus {
 
 #define SENDMESSAGE 0x0001
 #define FRIENDLIST 0x0002
+#define GETCHAT 0x0003

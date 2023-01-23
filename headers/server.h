@@ -6,6 +6,7 @@
 #include "Database.h"
 #include "ConnectionHandler.h"
 #include "Client.h"
+#include "json/json.h"
 #include <mutex>
 
 using namespace boost::asio;
@@ -22,6 +23,12 @@ class Server
     std::string getJsonFriendList(const std::string& id);
     void sendFriendList(std::shared_ptr<IConnectionHandler<Server>> connection, const std::string& userId);
     void closeClientConnection(std::shared_ptr<IConnectionHandler<Server>> connection);
+    void saveMessageToDatabase(const std::string& sender, const std::string& receiver, const std::string& msg);
+    Json::Value getChatMessages(const std::string& chatName);
+    void sendChatHistory(const std::string& id, Json::Value& chatHistory);
+    void createChatTable(const std::string& tableName);
+    std::string generateTableName(const std::string& sender, const std::string& receiver);
+    std::string getLastMessage(const std::string& sender, const std::string& receiver);
 public:
     Server(boost::asio::io_service &service);
     void handleAccept(std::shared_ptr<IConnectionHandler<Server>> connection, const boost::system::error_code& err);

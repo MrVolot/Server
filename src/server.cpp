@@ -1,6 +1,6 @@
 ﻿#include "server.h"
-#include "json/json.h"
 #include "Constants.h"
+#include <iostream>
 
 Server::Server(io_service& service) : service_{ service }, acceptor_{ service, ip::tcp::endpoint(boost::asio::ip::address::from_string("127.0.0.1"), 10690) },
 databaseInstance{ DatabaseHandler::getInstance() }
@@ -118,8 +118,17 @@ void Server::callbackReadCommand(std::shared_ptr<IConnectionHandler<Server>> con
 	reader.parse(connection->getData(), value);
 	connection->resetStrBuf();
 	auto client{ findClientByConnection(connection) };
-	if (value["command"].asString() == "sendMessage") {
-		sendMessageToClient(value["receiver"].asString(), value["message"].asString(), std::to_string(client.getId()));
+	auto sender{ std::to_string(client.getId()) };
+	auto receiver{ value["receiver"].asString()};
+	if (value["command"] == SENDMESSAGE) {
+		saveMessageToDatabase(sender, receiver, value["message"].asString());
+		sendMessageToClient(value["receiver"].asString(), value["message"].asString(), sender);
+		connection->callAsyncRead();
+		return;
+	}
+	if (value["command"] == GETCHAT) {
+		auto chatHistory{ getChatMessages(generateTableName(sender, receiver)) };
+		sendChatHistory(sender, chatHistory);
 		connection->callAsyncRead();
 		return;
 	}
@@ -147,12 +156,16 @@ std::string Server::getJsonFriendList(const std::string& id)
 	if (result.empty()) {
 		return "";
 	}
-	Json::Value value;
+	Json::Value finalValue;
 	Json::FastWriter writer;
 	for (auto row : result) {
-		value[row[0]] = row[1];
+		Json::Value tmpValue;
+		tmpValue[row[0]] = row[1];
+		tmpValue["lastMessage"] = getLastMessage(id, row[0]);
+		finalValue.append(tmpValue);//
 	}
-	return writer.write(value);
+	std::cout << finalValue.toStyledString();
+	return writer.write(finalValue);
 }
 
 void Server::sendFriendList(std::shared_ptr<IConnectionHandler<Server>> connection, const std::string& userId)
@@ -160,7 +173,7 @@ void Server::sendFriendList(std::shared_ptr<IConnectionHandler<Server>> connecti
 	Json::Value value;
 	Json::FastWriter writer;
 	Json::Reader reader;
-	reader.parse(getJsonFriendList(userId), value);
+	value["data"] = getJsonFriendList(userId);
 	value["command"] = FRIENDLIST;
 	connection->callWrite(writer.write(value));
 }
@@ -171,4 +184,71 @@ void Server::closeClientConnection(std::shared_ptr<IConnectionHandler<Server>> c
 	auto client{ findClientByConnection(connection) };
 	connections_.at(std::to_string(client.getId())).first->onlineStatus = false;
 	connections_.at(std::to_string(client.getId())).second = nullptr;
+}
+
+void Server::saveMessageToDatabase(const std::string& sender, const std::string& receiver, const std::string& msg)
+{
+	std::string tableName{ generateTableName(sender, receiver) };
+	if(!DatabaseHandler::getInstance().tableExists(tableName)){
+		createChatTable(tableName);
+	}
+	auto query{ "INSERT INTO " + tableName + " VALUES('" + sender + "', '" + receiver + "', '" + msg + "', Getdate())"};
+	DatabaseHandler::getInstance().executeQuery(query);
+}
+
+Json::Value Server::getChatMessages(const std::string& chatName)
+{
+	if (!DatabaseHandler::getInstance().tableExists(chatName)) {
+		createChatTable(chatName);
+	}
+	std::string query{ "SELECT * FROM " + chatName };
+	auto result{ DatabaseHandler::getInstance().executeQuery(query) };
+	if (result.empty()) {
+		return {};
+	}
+	
+	Json::Value finalValue;
+	Json::FastWriter writer;
+	for (auto row : result) {
+		Json::Value value;
+		value["sender"] = row[1];
+		value["receiver"] = row[2];
+		value["message"] = row[3];
+		value["time"] = row[4];
+		finalValue.append(value);
+	}
+	return finalValue;
+}
+
+void Server::sendChatHistory(const std::string& id, Json::Value& chatHistory)
+{
+	Json::Value value;
+	Json::FastWriter writer;
+	value["command"] = GETCHAT;
+	value["data"] = chatHistory;
+	connections_.at(id).second->callWrite(writer.write(value));
+}
+
+void Server::createChatTable(const std::string& tableName)
+{
+	std::string query{ "CREATE TABLE " + tableName + " (ID int NOT NULL IDENTITY(1,1) PRIMARY KEY, SENDER varchar(255) NOT NULL, RECEIVER varchar(255) NOT NULL, MESSAGE varchar(2048) NOT NULL, SENT_TIME DATETIME DEFAULT CURRENT_TIMESTAMP)" };
+	DatabaseHandler::getInstance().executeQuery(query);
+}
+
+std::string Server::generateTableName(const std::string& sender, const std::string& receiver)
+{
+	auto first{ "CHAT_" + sender + "_" + receiver };
+	auto second{ "CHAT_" + receiver + "_" + sender };
+	return std::stoull(sender) > std::stoull(receiver) ? first : second;
+}
+
+std::string Server::getLastMessage(const std::string& sender, const std::string& receiver)
+{
+	auto tableName{ generateTableName(sender, receiver) };
+	std::string query{ "SELECT TOP 1 MESSAGE FROM " + tableName + " ORDER BY ID DESC" };
+	auto queryResult{ DatabaseHandler::getInstance().executeQuery(query) };
+	if (!queryResult.empty()) {
+		std::cout << queryResult[0][0];
+	}
+	return queryResult.empty() ? "" : queryResult[0][0];
 }
