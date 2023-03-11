@@ -148,7 +148,7 @@ void Server::sendMessageToClient(const std::string& to, const std::string& what,
 	}
 }
 
-std::string Server::getJsonFriendList(const std::string& id)
+Json::Value Server::getJsonFriendList(const std::string& id)
 {
 	std::string tableName{ "FL_" + id };
 	std::string query{ "SELECT * FROM " + tableName };
@@ -160,12 +160,12 @@ std::string Server::getJsonFriendList(const std::string& id)
 	Json::FastWriter writer;
 	for (auto row : result) {
 		Json::Value tmpValue;
-		tmpValue[row[0]] = row[1];
+		tmpValue["id"] = std::stoull(row[0]);
+		tmpValue["name"] = row[1];
 		tmpValue["lastMessage"] = getLastMessage(id, row[0]);
-		finalValue.append(tmpValue);//
+		finalValue.append(tmpValue);
 	}
-	std::cout << finalValue.toStyledString();
-	return writer.write(finalValue);
+	return finalValue;
 }
 
 void Server::sendFriendList(std::shared_ptr<IConnectionHandler<Server>> connection, const std::string& userId)
@@ -173,8 +173,8 @@ void Server::sendFriendList(std::shared_ptr<IConnectionHandler<Server>> connecti
 	Json::Value value;
 	Json::FastWriter writer;
 	Json::Reader reader;
-	value["data"] = getJsonFriendList(userId);
 	value["command"] = FRIENDLIST;
+	value["data"] = getJsonFriendList(userId);
 	connection->callWrite(writer.write(value));
 }
 
@@ -242,13 +242,15 @@ std::string Server::generateTableName(const std::string& sender, const std::stri
 	return std::stoull(sender) > std::stoull(receiver) ? first : second;
 }
 
-std::string Server::getLastMessage(const std::string& sender, const std::string& receiver)
+Json::Value Server::getLastMessage(const std::string& sender, const std::string& receiver)
 {
+	Json::Value value;
 	auto tableName{ generateTableName(sender, receiver) };
-	std::string query{ "SELECT TOP 1 MESSAGE FROM " + tableName + " ORDER BY ID DESC" };
+	std::string query{ "SELECT TOP 1 MESSAGE, SENDER FROM " + tableName + " ORDER BY ID DESC" };
 	auto queryResult{ DatabaseHandler::getInstance().executeQuery(query) };
 	if (!queryResult.empty()) {
-		std::cout << queryResult[0][0];
+		value["message"] = queryResult[0][0];
+		value["sender"] = std::stoull(queryResult[0][1]);
 	}
-	return queryResult.empty() ? "" : queryResult[0][0];
+	return value;
 }

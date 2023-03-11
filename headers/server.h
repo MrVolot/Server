@@ -20,7 +20,7 @@ class Server
     DatabaseHandler& databaseInstance;
     std::mutex mutex;
 
-    std::string getJsonFriendList(const std::string& id);
+    Json::Value getJsonFriendList(const std::string& id);
     void sendFriendList(std::shared_ptr<IConnectionHandler<Server>> connection, const std::string& userId);
     void closeClientConnection(std::shared_ptr<IConnectionHandler<Server>> connection);
     void saveMessageToDatabase(const std::string& sender, const std::string& receiver, const std::string& msg);
@@ -28,7 +28,7 @@ class Server
     void sendChatHistory(const std::string& id, Json::Value& chatHistory);
     void createChatTable(const std::string& tableName);
     std::string generateTableName(const std::string& sender, const std::string& receiver);
-    std::string getLastMessage(const std::string& sender, const std::string& receiver);
+    Json::Value getLastMessage(const std::string& sender, const std::string& receiver);
 public:
     Server(boost::asio::io_service &service);
     void handleAccept(std::shared_ptr<IConnectionHandler<Server>> connection, const boost::system::error_code& err);
