@@ -119,7 +119,7 @@ void Server::callbackReadCommand(std::shared_ptr<IConnectionHandler<Server>> con
 	connection->resetStrBuf();
 	auto client{ findClientByConnection(connection) };
 	auto sender{ std::to_string(client.getId()) };
-	auto receiver{ value["receiver"].asString()};
+	auto receiver{ value["receiver"].asString() };
 	if (value["command"] == SENDMESSAGE) {
 		saveMessageToDatabase(sender, receiver, value["message"].asString());
 		sendMessageToClient(value["receiver"].asString(), value["message"].asString(), sender);
@@ -130,6 +130,11 @@ void Server::callbackReadCommand(std::shared_ptr<IConnectionHandler<Server>> con
 		auto chatHistory{ getChatMessages(generateTableName(sender, receiver)) };
 		sendChatHistory(sender, chatHistory);
 		connection->callAsyncRead();
+		return;
+	}
+	if (value["command"] == TRY_GET_CONTACT_BY_LOGIN) {
+		auto possibleContacts{ tryGetContactInfo(value["LOGIN"].asString()) };
+		sendPossibleContactsInfo(connection, possibleContacts.has_value() ? possibleContacts.value() : new Json::Value());
 		return;
 	}
 }
@@ -188,11 +193,12 @@ void Server::closeClientConnection(std::shared_ptr<IConnectionHandler<Server>> c
 
 void Server::saveMessageToDatabase(const std::string& sender, const std::string& receiver, const std::string& msg)
 {
+	verifyFriendsConnection(sender, receiver);
 	std::string tableName{ generateTableName(sender, receiver) };
-	if(!DatabaseHandler::getInstance().tableExists(tableName)){
+	if (!DatabaseHandler::getInstance().tableExists(tableName)) {
 		createChatTable(tableName);
 	}
-	auto query{ "INSERT INTO " + tableName + " VALUES('" + sender + "', '" + receiver + "', '" + msg + "', Getdate())"};
+	auto query{ "INSERT INTO " + tableName + " VALUES('" + sender + "', '" + receiver + "', '" + msg + "', Getdate())" };
 	DatabaseHandler::getInstance().executeQuery(query);
 }
 
@@ -206,7 +212,7 @@ Json::Value Server::getChatMessages(const std::string& chatName)
 	if (result.empty()) {
 		return {};
 	}
-	
+
 	Json::Value finalValue;
 	Json::FastWriter writer;
 	for (auto row : result) {
@@ -246,11 +252,73 @@ Json::Value Server::getLastMessage(const std::string& sender, const std::string&
 {
 	Json::Value value;
 	auto tableName{ generateTableName(sender, receiver) };
-	std::string query{ "SELECT TOP 1 MESSAGE, SENDER FROM " + tableName + " ORDER BY ID DESC" };
-	auto queryResult{ DatabaseHandler::getInstance().executeQuery(query) };
-	if (!queryResult.empty()) {
-		value["message"] = queryResult[0][0];
-		value["sender"] = std::stoull(queryResult[0][1]);
+	if (DatabaseHandler::getInstance().tableExists(tableName)) {
+		std::string query{ "SELECT TOP 1 MESSAGE, SENDER FROM " + tableName + " ORDER BY ID DESC" };
+		auto queryResult{ DatabaseHandler::getInstance().executeQuery(query) };
+		if (!queryResult.empty()) {
+			value["message"] = queryResult[0][0];
+			value["sender"] = std::stoull(queryResult[0][1]);
+		}
 	}
 	return value;
+}
+
+std::optional<Json::Value> Server::tryGetContactInfo(const std::string& login)
+{
+	//Add name retrieval
+	Json::Value finalValue;
+	if (!login.empty()) {
+		std::string query{ "SELECT ID, LOGIN FROM CONTACTS WHERE LOGIN LIKE '%" + login + "%'" };
+		auto queryResult{ DatabaseHandler::getInstance().executeQuery(query) };
+		if (queryResult.empty()) {
+			return std::nullopt;
+		}
+		Json::FastWriter writer;
+		for (auto row : queryResult) {
+			Json::Value value;
+			value["ID"] = std::stoull(row[0]);
+			value["LOGIN"] = row[1];
+			finalValue.append(value);
+		}
+	}
+	return finalValue;
+}
+
+void Server::sendPossibleContactsInfo(std::shared_ptr<IConnectionHandler<Server>> connection, const Json::Value& value)
+{
+	Json::FastWriter writer;
+	Json::Value tmpValue;
+	tmpValue["command"] = TRY_GET_CONTACT_BY_LOGIN;
+	tmpValue["data"] = value;
+	connection->callWrite(writer.write(tmpValue));
+	connection->callAsyncRead();
+}
+
+void Server::insertFriendIfNeeded(const std::string& tableName, std::pair<const std::string&, const std::string&> value)
+{
+	std::string query{ "IF NOT EXISTS (SELECT * FROM " + tableName + " WHERE ID = ?) BEGIN INSERT INTO " + tableName + " VALUES(?, ?) END" };
+	DatabaseHandler::getInstance().executeWithPreparedStatement(query, { value.first, value.first, value.second});
+}
+
+void Server::verifyFriendsConnection(const std::string& sender, const std::string& receiver)
+{
+	auto user1{ connections_.find(sender) };
+	auto user2{ connections_.find(receiver) };
+	std::string table1{ "FL_" + sender };
+	std::string table2{ "FL_" + receiver };
+	if (!DatabaseHandler::getInstance().tableExists(table1)) {
+		
+		std::string query{ "CREATE TABLE " + table1 + " (ID int NOT NULL PRIMARY KEY, Name varchar(255) NOT NULL)" };
+		DatabaseHandler::getInstance().executeQuery(query);
+	}
+	insertFriendIfNeeded(table1, { std::to_string(user2->second.first->getId()), user2->second.first->getName() });
+	if (!DatabaseHandler::getInstance().tableExists(table2)) {
+		
+		std::string query{ "CREATE TABLE " + table2 + " (ID int NOT NULL PRIMARY KEY, Name varchar(255) NOT NULL)" };
+		DatabaseHandler::getInstance().executeQuery(query);
+	}
+	//TODO send some info that new message from new person appeared , in order to create chat widget for receiver
+	//it friend didn't exist and was inserted, we must send info to create chat
+	//otherwise we do not care, since this chat already existed
+	insertFriendIfNeeded(table2, { std::to_string(user1->second.first->getId()), user1->second.first->getName() });
 }

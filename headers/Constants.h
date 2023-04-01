@@ -23,3 +23,4 @@ enum credentialsStatus {
 #define SENDMESSAGE 0x0001
 #define FRIENDLIST 0x0002
 #define GETCHAT 0x0003
+#define TRY_GET_CONTACT_BY_LOGIN 0x0004

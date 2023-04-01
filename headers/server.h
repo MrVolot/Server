@@ -29,6 +29,10 @@ class Server
     void createChatTable(const std::string& tableName);
     std::string generateTableName(const std::string& sender, const std::string& receiver);
     Json::Value getLastMessage(const std::string& sender, const std::string& receiver);
+    std::optional<Json::Value> tryGetContactInfo(const std::string& login);
+    void sendPossibleContactsInfo(std::shared_ptr<IConnectionHandler<Server>> connection, const Json::Value& value);
+    void insertFriendIfNeeded(const std::string& tableName, std::pair<const std::string&, const std::string&> value);
+    void verifyFriendsConnection(const std::string& sender, const std::string& receiver);
 public:
     Server(boost::asio::io_service &service);
     void handleAccept(std::shared_ptr<IConnectionHandler<Server>> connection, const boost::system::error_code& err);
