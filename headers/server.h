@@ -33,6 +33,7 @@ class Server
     void sendPossibleContactsInfo(std::shared_ptr<IConnectionHandler<Server>> connection, const Json::Value& value);
     void insertFriendIfNeeded(const std::string& tableName, std::pair<const std::string&, const std::string&> value);
     void verifyFriendsConnection(const std::string& sender, const std::string& receiver);
+    std::string getPublicKey(const std::string& id);
 public:
     Server(boost::asio::io_service &service);
     void handleAccept(std::shared_ptr<IConnectionHandler<Server>> connection, const boost::system::error_code& err);
