@@ -40,7 +40,7 @@ void Server::readConnection(std::shared_ptr<IConnectionHandler<Server>> connecti
 			user->second.first->onlineStatus = true;
 		}
 		else {
-			std::unique_ptr<Client> tempClient{ new Client {clientName, std::stoull(result.value()[0][0])} };
+			std::unique_ptr<Client> tempClient{ new Client {clientName, std::stoull(result.value()[0][0]), result.value()[0][1]} };
 			tempClient->onlineStatus = true;
 			connections_.insert({ tempClient->getName(), std::make_pair(std::move(tempClient),connection) });
 		}
@@ -73,10 +73,10 @@ std::optional<std::vector<std::vector<std::string>>> Server::verificateHash(cons
 
 void Server::loadUsers()
 {
-	auto result{ databaseInstance.executeQuery("SELECT ID,LOGIN FROM CONTACTS") };
+	auto result{ databaseInstance.executeQuery("SELECT ID, LOGIN, PUBLIC_KEY FROM CONTACTS") };
 	std::lock_guard<std::mutex> guard(mutex);
 	for (auto& n : result) {
-		std::unique_ptr<Client> tempClient{ new Client {n[1], std::stoull(n[0])} };
+		std::unique_ptr<Client> tempClient{ new Client {n[1], std::stoull(n[0]), n[2]}};
 		connections_.insert({ std::to_string(tempClient->getId()), std::make_pair(std::move(tempClient), nullptr) });
 	}
 	std::thread trd{ &Server::pingClient, this };
@@ -168,9 +168,20 @@ Json::Value Server::getJsonFriendList(const std::string& id)
 		tmpValue["id"] = std::stoull(row[0]);
 		tmpValue["name"] = row[1];
 		tmpValue["lastMessage"] = getLastMessage(id, row[0]);
+		tmpValue["publicKey"] = getPublicKey(row[0]);
 		finalValue.append(tmpValue);
 	}
 	return finalValue;
+}
+
+std::string Server::getPublicKey(const std::string& id)
+{
+	std::string query{ "SELECT PUBLIC_KEY FROM CONTACTS WHERE ID = '" + id + "'"};
+	auto result{ DatabaseHandler::getInstance().executeQuery(query) };
+	if (result.empty()) {
+		return "";
+	}
+	return result[0][0];
 }
 
 void Server::sendFriendList(std::shared_ptr<IConnectionHandler<Server>> connection, const std::string& userId)
@@ -179,6 +190,7 @@ void Server::sendFriendList(std::shared_ptr<IConnectionHandler<Server>> connecti
 	Json::FastWriter writer;
 	Json::Reader reader;
 	value["command"] = FRIENDLIST;
+	value["personalId"] = std::stoull(userId);
 	value["data"] = getJsonFriendList(userId);
 	connection->callWrite(writer.write(value));
 }
