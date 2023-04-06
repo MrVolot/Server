@@ -121,7 +121,7 @@ void Server::callbackReadCommand(std::shared_ptr<IConnectionHandler<Server>> con
 	auto sender{ std::to_string(client.getId()) };
 	auto receiver{ value["receiver"].asString() };
 	if (value["command"] == SENDMESSAGE) {
-		//saveMessageToDatabase(sender, receiver, value["message"].asString());
+		saveMessageToDatabase(sender, receiver, value["message"].asString());
 		sendMessageToClient(value["receiver"].asString(), value["message"].asString(), sender);
 		connection->callAsyncRead();
 		return;
@@ -186,11 +186,11 @@ std::string Server::getPublicKey(const std::string& id)
 
 void Server::sendFriendList(std::shared_ptr<IConnectionHandler<Server>> connection, const std::string& userId)
 {
-	auto foundUser{ connections_.find(userId) };
 	Json::Value value;
 	Json::FastWriter writer;
 	Json::Reader reader;
 	value["command"] = FRIENDLIST;
+	value["personalId"] = std::stoull(userId);
 	value["data"] = getJsonFriendList(userId);
 	connection->callWrite(writer.write(value));
 }
