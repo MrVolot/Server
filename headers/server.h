@@ -4,7 +4,7 @@
 #include <optional>
 #include <unordered_map>
 #include "Database.h"
-#include "ConnectionHandler.h"
+#include "HttpsConnectionHandler.h"
 #include "Client.h"
 #include "json/json.h"
 #include <mutex>
@@ -19,6 +19,7 @@ class Server
     std::unordered_map<std::string, std::pair<std::unique_ptr<Client>, std::shared_ptr<IConnectionHandler<Server>>>> connections_;
     DatabaseHandler& databaseInstance;
     std::mutex mutex;
+    boost::asio::ssl::context ssl_context_;
 
     Json::Value getJsonFriendList(const std::string& id);
     void sendFriendList(std::shared_ptr<IConnectionHandler<Server>> connection, const std::string& userId);

@@ -1,12 +1,42 @@
 ﻿#include "server.h"
 #include "Constants.h"
 #include <iostream>
+#include "certificateUtils/certificateUtils.h"
 
-Server::Server(io_service& service) : service_{ service }, acceptor_{ service, ip::tcp::endpoint(boost::asio::ip::address::from_string("127.0.0.1"), 10690) },
-databaseInstance{ DatabaseHandler::getInstance() }
+Server::Server(io_service& service) : 
+	service_{ service },
+	acceptor_{ service, ip::tcp::endpoint(boost::asio::ip::address::from_string("127.0.0.1"), 10690) },
+	databaseInstance{ DatabaseHandler::getInstance() },
+	ssl_context_ {boost::asio::ssl::context::sslv23}
 {
 	databaseInstance.connectDB("Server", "123");
 	loadUsers();
+
+	std::shared_ptr<EVP_PKEY> private_key = certificateUtils::generate_private_key(2048);
+	std::shared_ptr<X509> certificate = certificateUtils::generate_self_signed_certificate("Server", private_key.get(), 365);
+
+	// Load the CA certificate into memory
+	std::shared_ptr<X509> ca_cert = certificateUtils::load_ca_certificate();
+
+	X509_STORE* cert_store = SSL_CTX_get_cert_store(ssl_context_.native_handle());
+	X509_STORE_add_cert(cert_store, ca_cert.get());
+
+	ssl_context_.use_private_key(boost::asio::const_buffer(certificateUtils::private_key_to_pem(private_key.get()).data(),
+		certificateUtils::private_key_to_pem(private_key.get()).size()),
+		boost::asio::ssl::context::pem);
+	ssl_context_.use_certificate(boost::asio::const_buffer(certificateUtils::certificate_to_pem(certificate.get()).data(),
+		certificateUtils::certificate_to_pem(certificate.get()).size()),
+		boost::asio::ssl::context::pem);
+	ssl_context_.set_verify_mode(boost::asio::ssl::verify_peer);
+	ssl_context_.set_verify_callback(
+		[](bool preverified, boost::asio::ssl::verify_context& ctx) {
+			return certificateUtils::custom_verify_callback(preverified, ctx, "ServerClient");
+		});
+	ssl_context_.set_options(boost::asio::ssl::context::default_workarounds |
+		boost::asio::ssl::context::no_sslv2 |
+		boost::asio::ssl::context::no_sslv3 |
+		boost::asio::ssl::context::single_dh_use);
+
 	startAccept();
 }
 
@@ -15,14 +45,14 @@ void Server::handleAccept(std::shared_ptr<IConnectionHandler<Server>> connection
 	if (!err) {
 		connection->setAsyncReadCallback(&Server::readConnection);
 		connection->setWriteCallback(&Server::writeCallback);
-		connection->callAsyncRead();
+		connection->callAsyncHandshake();
 	}
 	startAccept();
 }
 
 void Server::startAccept()
 {
-	auto connection{ std::make_shared<ConnectionHandler<Server>>(service_, *this) };
+	auto connection{ std::make_shared<HttpsConnectionHandler<Server, ConnectionHandlerType::SERVER>>(service_, *this, ssl_context_) };
 	acceptor_.async_accept(connection->getSocket(), boost::bind(&Server::handleAccept, this, connection, boost::asio::placeholders::error));
 }
 

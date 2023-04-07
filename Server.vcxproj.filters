@@ -47,5 +47,8 @@
     <ClCompile Include="src\jsoncpp.cpp">
       <Filter>Исходные файлы</Filter>
     </ClCompile>
+    <ClCompile Include="..\ThirdParty\certificateUtils\certificateUtils.cpp">
+      <Filter>Исходные файлы</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>
