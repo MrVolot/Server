@@ -46,7 +46,6 @@ void Server::handleAccept(std::shared_ptr<IConnectionHandler<Server>> connection
 		connection->setAsyncReadCallback(&Server::readConnection);
 		connection->setWriteCallback(&Server::writeCallback);
 		connection->callAsyncHandshake();
-		//connection->callAsyncRead();
 	}
 	startAccept();
 }
