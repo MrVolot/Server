@@ -158,6 +158,7 @@
     <ClInclude Include="headers\server.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="..\ThirdParty\certificateUtils\certificateUtils.cpp" />
     <ClCompile Include="src\Client.cpp" />
     <ClCompile Include="src\jsoncpp.cpp" />
     <ClCompile Include="src\main.cpp" />

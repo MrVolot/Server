@@ -1,19 +1,7 @@
 ﻿#include "server.h"
 #include "Constants.h"
 #include <iostream>
-
-void ssl_info_callback(const SSL* ssl, int where, int ret)
-{
-	if (where & SSL_CB_LOOP)
-	{
-		std::cout << "SSL state: " << SSL_state_string_long(ssl) << std::endl;
-	}
-	else if (where & SSL_CB_ALERT)
-	{
-		std::cout << "SSL alert: " << SSL_alert_type_string_long(ret)
-			<< ": " << SSL_alert_desc_string_long(ret) << std::endl;
-	}
-}
+#include "certificateUtils/certificateUtils.h"
 
 Server::Server(io_service& service) : 
 	service_{ service },
@@ -21,15 +9,29 @@ Server::Server(io_service& service) :
 	databaseInstance{ DatabaseHandler::getInstance() },
 	ssl_context_ {boost::asio::ssl::context::sslv23}
 {
-	SSL_CTX_set_info_callback(ssl_context_.native_handle(), ssl_info_callback);
 	databaseInstance.connectDB("Server", "123");
 	loadUsers();
 
-	ssl_context_.load_verify_file("C:\\Users\\Kiril\\Desktop\\testing\\ca.crt");
-	ssl_context_.use_certificate_chain_file("C:\\Users\\Kiril\\Desktop\\testing\\server.crt");
-	ssl_context_.use_private_key_file("C:\\Users\\Kiril\\Desktop\\testing\\server.key", boost::asio::ssl::context::pem);
+	std::shared_ptr<EVP_PKEY> private_key = certificateUtils::generate_private_key(2048);
+	std::shared_ptr<X509> certificate = certificateUtils::generate_self_signed_certificate("Server", private_key.get(), 365);
+
+	// Load the CA certificate into memory
+	std::shared_ptr<X509> ca_cert = certificateUtils::load_ca_certificate();
+
+	X509_STORE* cert_store = SSL_CTX_get_cert_store(ssl_context_.native_handle());
+	X509_STORE_add_cert(cert_store, ca_cert.get());
+
+	ssl_context_.use_private_key(boost::asio::const_buffer(certificateUtils::private_key_to_pem(private_key.get()).data(),
+		certificateUtils::private_key_to_pem(private_key.get()).size()),
+		boost::asio::ssl::context::pem);
+	ssl_context_.use_certificate(boost::asio::const_buffer(certificateUtils::certificate_to_pem(certificate.get()).data(),
+		certificateUtils::certificate_to_pem(certificate.get()).size()),
+		boost::asio::ssl::context::pem);
 	ssl_context_.set_verify_mode(boost::asio::ssl::verify_peer);
-	ssl_context_.set_verify_callback(boost::bind(&Server::custom_verify_callback, this, boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred));
+	ssl_context_.set_verify_callback(
+		[](bool preverified, boost::asio::ssl::verify_context& ctx) {
+			return certificateUtils::custom_verify_callback(preverified, ctx, "ServerClient");
+		});
 	ssl_context_.set_options(boost::asio::ssl::context::default_workarounds |
 		boost::asio::ssl::context::no_sslv2 |
 		boost::asio::ssl::context::no_sslv3 |
@@ -51,7 +53,7 @@ void Server::handleAccept(std::shared_ptr<IConnectionHandler<Server>> connection
 
 void Server::startAccept()
 {
-	auto connection{ std::make_shared<HttpsConnectionHandler<Server>>(service_, *this, ssl_context_) };
+	auto connection{ std::make_shared<HttpsConnectionHandler<Server, ConnectionHandlerType::SERVER>>(service_, *this, ssl_context_) };
 	acceptor_.async_accept(connection->getSocket(), boost::bind(&Server::handleAccept, this, connection, boost::asio::placeholders::error));
 }
 
