@@ -251,7 +251,6 @@ std::string Server::saveMessageToDatabase(const std::string& messageGuid, const 
 		createChatTable(tableName);
 	}
 	auto query{ "INSERT INTO " + tableName + " OUTPUT INSERTED.SENT_TIME VALUES(?, ?, ?, ?, Getdate())" };
-	//auto query{ "INSERT INTO " + tableName + " VALUES('" + sender + "', '" + receiver + "', '" + msg + "', Getdate())" };
 	auto result{ DatabaseHandler::getInstance().executeWithPreparedStatement(query, {messageGuid, sender, receiver, msg})};
 	result.next();
 	return result.get<std::string>(0);
@@ -294,7 +293,6 @@ void Server::sendChatHistory(const std::string& id, Json::Value& chatHistory)
 void Server::createChatTable(const std::string& tableName)
 {
 	std::string query{ "CREATE TABLE " + tableName + " (ID int NOT NULL IDENTITY(1,1) PRIMARY KEY, GUID varchar(36) NOT NULL UNIQUE, SENDER varchar(255) NOT NULL, RECEIVER varchar(255) NOT NULL, MESSAGE varchar(2048) NOT NULL, SENT_TIME DATETIME DEFAULT CURRENT_TIMESTAMP)" };
-	//std::string query{ "CREATE TABLE " + tableName + " (ID int NOT NULL IDENTITY(1,1) PRIMARY KEY, SENDER varchar(255) NOT NULL, RECEIVER varchar(255) NOT NULL, MESSAGE varchar(2048) NOT NULL, SENT_TIME DATETIME DEFAULT CURRENT_TIMESTAMP)" };
 	DatabaseHandler::getInstance().executeQuery(query);
 }
 
