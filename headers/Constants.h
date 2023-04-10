@@ -20,7 +20,16 @@ enum credentialsStatus {
 	ERROR_
 };
 
+struct MessageInfo {
+	std::string messageId;
+	std::string messageText;
+	std::string sentTime;
+	std::string senderId;
+	std::string receiverId;
+};
+
 #define SENDMESSAGE 0x0001
 #define FRIENDLIST 0x0002
 #define GETCHAT 0x0003
 #define TRY_GET_CONTACT_BY_LOGIN 0x0004
+#define DELETE_MESSAGE 0x0005

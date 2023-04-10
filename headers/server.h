@@ -8,6 +8,7 @@
 #include "Client.h"
 #include "json/json.h"
 #include <mutex>
+#include "Constants.h"
 
 using namespace boost::asio;
 
@@ -24,7 +25,7 @@ class Server
     Json::Value getJsonFriendList(const std::string& id);
     void sendFriendList(std::shared_ptr<IConnectionHandler<Server>> connection, const std::string& userId);
     void closeClientConnection(std::shared_ptr<IConnectionHandler<Server>> connection);
-    void saveMessageToDatabase(const std::string& sender, const std::string& receiver, const std::string& msg);
+    std::string saveMessageToDatabase(const std::string& messageGuid, const std::string& sender, const std::string& receiver, const std::string& msg);
     Json::Value getChatMessages(const std::string& chatName);
     void sendChatHistory(const std::string& id, Json::Value& chatHistory);
     void createChatTable(const std::string& tableName);
@@ -35,6 +36,7 @@ class Server
     void insertFriendIfNeeded(const std::string& tableName, std::pair<const std::string&, const std::string&> value);
     void verifyFriendsConnection(const std::string& sender, const std::string& receiver);
     std::string getPublicKey(const std::string& id);
+    void deleteMessageById(const std::string& sender, const std::string& receiver, const std::string& messageId);
 public:
     Server(boost::asio::io_service &service);
     void handleAccept(std::shared_ptr<IConnectionHandler<Server>> connection, const boost::system::error_code& err);
@@ -43,7 +45,7 @@ public:
     void writeCallback(std::shared_ptr<IConnectionHandler<Server>> connection, const boost::system::error_code& err, size_t bytes_transferred);
     std::optional<std::vector<std::vector<std::string>>> verificateHash(const std::string& hash);
     void callbackReadCommand(std::shared_ptr<IConnectionHandler<Server>> connection, const boost::system::error_code& err, size_t bytes_transferred);
-    void sendMessageToClient(const std::string& to, const std::string& what, const std::string& from);
+    void sendMessageToClient(const MessageInfo& messageInfo);
     void loadUsers();
     Client& findClientByConnection(std::shared_ptr<IConnectionHandler<Server>> connection);
     void pingClient();

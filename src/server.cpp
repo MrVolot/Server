@@ -1,5 +1,5 @@
 ﻿#include "server.h"
-#include "Constants.h"
+
 #include <iostream>
 #include "certificateUtils/certificateUtils.h"
 
@@ -151,8 +151,11 @@ void Server::callbackReadCommand(std::shared_ptr<IConnectionHandler<Server>> con
 	auto sender{ std::to_string(client.getId()) };
 	auto receiver{ value["receiver"].asString() };
 	if (value["command"] == SENDMESSAGE) {
-		saveMessageToDatabase(sender, receiver, value["message"].asString());
-		sendMessageToClient(value["receiver"].asString(), value["message"].asString(), sender);
+		auto messageText{ value["message"].asString() };
+		auto messageGuid{ value["messageGuid"].asString() };
+		auto sentTime { saveMessageToDatabase(messageGuid, sender, receiver, messageText) };
+		MessageInfo msgInfo{ messageGuid, messageText, sentTime, sender, receiver };
+		sendMessageToClient(msgInfo);
 		connection->callAsyncRead();
 		return;
 	}
@@ -167,19 +170,26 @@ void Server::callbackReadCommand(std::shared_ptr<IConnectionHandler<Server>> con
 		sendPossibleContactsInfo(connection, possibleContacts.has_value() ? possibleContacts.value() : new Json::Value());
 		return;
 	}
+	if (value["command"] == DELETE_MESSAGE) {
+		deleteMessageById(sender, value["receiverId"].asString(), value["messageGuid"].asString());
+		connection->callAsyncRead();
+		return;
+	}
 }
 
-void Server::sendMessageToClient(const std::string& to, const std::string& what, const std::string& from)
+void Server::sendMessageToClient(const MessageInfo& messageInfo)
 {
-	auto foundUser{ connections_.find(to) };
+	auto foundUser{ connections_.find(messageInfo.receiverId) };
 	if (foundUser != connections_.end() && foundUser->second.first->onlineStatus) {
 		Json::Value value;
 		Json::FastWriter writer;
 		value["command"] = SENDMESSAGE;
+		value["messageGuid"] = messageInfo.messageId;
 		value["receiver"] = std::to_string(foundUser->second.first->getId());
-		value["message"] = what;
-		value["sender"] = from;
-		connections_.at(to).second->callWrite(writer.write(value));
+		value["message"] = messageInfo.messageText;
+		value["sender"] = messageInfo.senderId;
+		value["time"] = messageInfo.sentTime;
+		connections_.at(messageInfo.receiverId).second->callWrite(writer.write(value));
 	}
 }
 
@@ -233,15 +243,17 @@ void Server::closeClientConnection(std::shared_ptr<IConnectionHandler<Server>> c
 	connections_.at(std::to_string(client.getId())).second = nullptr;
 }
 
-void Server::saveMessageToDatabase(const std::string& sender, const std::string& receiver, const std::string& msg)
+std::string Server::saveMessageToDatabase(const std::string& messageGuid, const std::string& sender, const std::string& receiver, const std::string& msg)
 {
 	verifyFriendsConnection(sender, receiver);
 	std::string tableName{ generateTableName(sender, receiver) };
 	if (!DatabaseHandler::getInstance().tableExists(tableName)) {
 		createChatTable(tableName);
 	}
-	auto query{ "INSERT INTO " + tableName + " VALUES('" + sender + "', '" + receiver + "', '" + msg + "', Getdate())" };
-	DatabaseHandler::getInstance().executeQuery(query);
+	auto query{ "INSERT INTO " + tableName + " OUTPUT INSERTED.SENT_TIME VALUES(?, ?, ?, ?, Getdate())" };
+	auto result{ DatabaseHandler::getInstance().executeWithPreparedStatement(query, {messageGuid, sender, receiver, msg})};
+	result.next();
+	return result.get<std::string>(0);
 }
 
 Json::Value Server::getChatMessages(const std::string& chatName)
@@ -259,10 +271,11 @@ Json::Value Server::getChatMessages(const std::string& chatName)
 	Json::FastWriter writer;
 	for (auto row : result) {
 		Json::Value value;
-		value["sender"] = row[1];
-		value["receiver"] = row[2];
-		value["message"] = row[3];
-		value["time"] = row[4];
+		value["messageGuid"] = row[1];
+		value["sender"] = row[2];
+		value["receiver"] = row[3];
+		value["message"] = row[4];
+		value["time"] = row[5];
 		finalValue.append(value);
 	}
 	return finalValue;
@@ -279,7 +292,7 @@ void Server::sendChatHistory(const std::string& id, Json::Value& chatHistory)
 
 void Server::createChatTable(const std::string& tableName)
 {
-	std::string query{ "CREATE TABLE " + tableName + " (ID int NOT NULL IDENTITY(1,1) PRIMARY KEY, SENDER varchar(255) NOT NULL, RECEIVER varchar(255) NOT NULL, MESSAGE varchar(2048) NOT NULL, SENT_TIME DATETIME DEFAULT CURRENT_TIMESTAMP)" };
+	std::string query{ "CREATE TABLE " + tableName + " (ID int NOT NULL IDENTITY(1,1) PRIMARY KEY, GUID varchar(36) NOT NULL UNIQUE, SENDER varchar(255) NOT NULL, RECEIVER varchar(255) NOT NULL, MESSAGE varchar(2048) NOT NULL, SENT_TIME DATETIME DEFAULT CURRENT_TIMESTAMP)" };
 	DatabaseHandler::getInstance().executeQuery(query);
 }
 
@@ -363,4 +376,19 @@ void Server::verifyFriendsConnection(const std::string& sender, const std::strin
 	//it friend didn't exist and was inserted, we must send info to create chat
 	//otherwise we do not care, since this chat already existed
 	insertFriendIfNeeded(table2, { std::to_string(user1->second.first->getId()), user1->second.first->getName() });
+}
+
+void Server::deleteMessageById(const std::string& sender, const std::string& receiver, const std::string& messageId)
+{
+	auto tableName{ generateTableName(sender, receiver) };
+	std::string query{ "DELETE FROM " + tableName + " WHERE [GUID] = ?" };
+	DatabaseHandler::getInstance().executeWithPreparedStatement(query, {messageId});
+
+	Json::Value value;
+	Json::FastWriter writer;
+	value["command"] = DELETE_MESSAGE;
+	value["messageGuid"] = messageId;
+	value["receiver"] = receiver;
+	value["sender"] = sender;
+	connections_.at(receiver).second->callWrite(writer.write(value));
 }
