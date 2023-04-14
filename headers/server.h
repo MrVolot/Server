@@ -37,6 +37,10 @@ class Server
     void verifyFriendsConnection(const std::string& sender, const std::string& receiver);
     std::string getPublicKey(const std::string& id);
     void deleteMessageById(const std::string& sender, const std::string& receiver, const std::string& messageId);
+    void deleteAccountById(const std::string& id);
+    std::string getUserPublicKey(const std::string& id);
+    void saveUserPublicKey(const std::string& id, const std::string& publicKey);
+    void processPublicKeyRetrieval(std::shared_ptr<IConnectionHandler<Server>> connection, const std::string& id);
 public:
     Server(boost::asio::io_service &service);
     void handleAccept(std::shared_ptr<IConnectionHandler<Server>> connection, const boost::system::error_code& err);

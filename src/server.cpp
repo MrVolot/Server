@@ -63,25 +63,38 @@ void Server::readConnection(std::shared_ptr<IConnectionHandler<Server>> connecti
 		return;
 	}
 	std::lock_guard<std::mutex> guard(mutex);
-	if (auto result{ verificateHash(connection->getData()) }; result != std::nullopt) {
-		std::string clientName{ result.value()[0][0] };
-		if (auto user{ connections_.find(clientName) }; user != connections_.end()) {
+	Json::Value value;
+	Json::Reader reader;
+	reader.parse(connection->getData(), value);
+	if (auto result{ verificateHash(value["hash"].asString())}; result != std::nullopt) {
+		std::string clientId{ result.value()[0][0] };
+		if (!value["publicKey"].isNull()) {
+			saveUserPublicKey(clientId, value["publicKey"].asString());
+		}
+		if (auto user{ connections_.find(clientId) }; user != connections_.end()) {
 			user->second.second = std::move(connection);
 			user->second.first->onlineStatus = true;
 		}
 		else {
-			std::unique_ptr<Client> tempClient{ new Client {clientName, std::stoull(result.value()[0][0]), result.value()[0][1]} };
+			std::unique_ptr<Client> tempClient{ new Client {result.value()[0][1], std::stoull(clientId), result.value()[0][2]} };
 			tempClient->onlineStatus = true;
-			connections_.insert({ tempClient->getName(), std::make_pair(std::move(tempClient),connection) });
+			connections_.insert({ std::to_string(tempClient->getId()), std::make_pair(std::move(tempClient),connection) });
 		}
-		auto clientId = connections_.at(clientName).first->getId();
-		connections_.at(clientName).second->setAsyncReadCallback(&Server::callbackReadCommand);
-		connections_.at(clientName).second->getStrBuf().reset(new boost::asio::streambuf);
-		connections_.at(clientName).second->resetStrBuf();
-		connections_.at(clientName).second->callAsyncRead();
-		auto user{ connections_.find(clientName) };
-		sendFriendList(user->second.second, std::to_string(clientId));
+		connections_.at(clientId).second->setAsyncReadCallback(&Server::callbackReadCommand);
+		connections_.at(clientId).second->getStrBuf().reset(new boost::asio::streambuf);
+		connections_.at(clientId).second->resetStrBuf();
+		connections_.at(clientId).second->callAsyncRead();
+		auto user{ connections_.find(clientId) };
+		sendFriendList(user->second.second, clientId);
 	}
+}
+
+std::string Server::getUserPublicKey(const std::string& id)
+{
+	auto query{ "SELECT PUBLIC_KEY FROM CONTACTS WHERE ID = ?" };
+	auto result{ DatabaseHandler::getInstance().executeWithPreparedStatement(query, {id}) };
+	result.next();
+	return result.get<std::string>(0);
 }
 
 void Server::writeCallback(std::shared_ptr<IConnectionHandler<Server>> connection, const boost::system::error_code& err, size_t bytes_transferred)
@@ -92,13 +105,31 @@ void Server::writeCallback(std::shared_ptr<IConnectionHandler<Server>> connectio
 	}
 }
 
+void Server::saveUserPublicKey(const std::string& id, const std::string& publicKey)
+{
+	auto query{ "UPDATE CONTACTS SET PUBLIC_KEY = ? WHERE ID = ?" };
+	DatabaseHandler::getInstance().executeWithPreparedStatement(query, { publicKey, id });
+}
+
 std::optional<std::vector<std::vector<std::string>>> Server::verificateHash(const std::string& hash)
 {
-	auto result{ databaseInstance.executeQuery("SELECT ID, LOGIN FROM CONTACTS WHERE TOKEN = '" + hash + "'") };
+	auto result{ databaseInstance.executeQuery("SELECT ID, LOGIN, PUBLIC_KEY FROM CONTACTS WHERE TOKEN = '" + hash + "'") };
 	if (result.empty()) {
 		return std::nullopt;
 	}
 	return result;
+}
+
+void Server::processPublicKeyRetrieval(std::shared_ptr<IConnectionHandler<Server>> connection, const std::string& id)
+{
+	auto publicKey{ getUserPublicKey(id) };
+	Json::Value tmpValue{};
+	tmpValue["command"] = REQUEST_PUBLIC_KEY;
+	tmpValue["id"] = id;
+	tmpValue["userPublicKey"] = publicKey;
+	Json::StreamWriterBuilder writer;
+	connection->callWrite(Json::writeString(writer, tmpValue));
+	connection->callAsyncRead();
 }
 
 void Server::loadUsers()
@@ -173,6 +204,15 @@ void Server::callbackReadCommand(std::shared_ptr<IConnectionHandler<Server>> con
 	if (value["command"] == DELETE_MESSAGE) {
 		deleteMessageById(sender, value["receiverId"].asString(), value["messageGuid"].asString());
 		connection->callAsyncRead();
+		return;
+	}
+	if (value["command"] == DELETE_ACCOUNT) {
+		deleteAccountById(value["id"].asString());
+		connection->callWrite("close connection");
+		return;
+	}
+	if (value["command"] == REQUEST_PUBLIC_KEY) {
+		processPublicKeyRetrieval(connection, value["id"].asString());
 		return;
 	}
 }
@@ -391,4 +431,12 @@ void Server::deleteMessageById(const std::string& sender, const std::string& rec
 	value["receiver"] = receiver;
 	value["sender"] = sender;
 	connections_.at(receiver).second->callWrite(writer.write(value));
+}
+
+void Server::deleteAccountById(const std::string& id)
+{
+	std::string query{ "DELETE FROM CONTACTS WHERE ID = ?" };
+	DatabaseHandler::getInstance().executeWithPreparedStatement(query, { id });
+	query = "DROP TABLE FL_" + id;
+	DatabaseHandler::getInstance().executeQuery(query);
 }
