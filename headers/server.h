@@ -9,6 +9,7 @@
 #include "json/json.h"
 #include <mutex>
 #include "Constants.h"
+#include "emailHandler/EmailHandler.h"
 
 using namespace boost::asio;
 
@@ -21,6 +22,7 @@ class Server
     DatabaseHandler& databaseInstance;
     std::mutex mutex;
     boost::asio::ssl::context ssl_context_;
+    EmailHandler emailHandler;
 
     Json::Value getJsonFriendList(const std::string& id);
     void sendFriendList(std::shared_ptr<IConnectionHandler<Server>> connection, const std::string& userId);
@@ -41,6 +43,11 @@ class Server
     std::string getUserPublicKey(const std::string& id);
     void saveUserPublicKey(const std::string& id, const std::string& publicKey);
     void processPublicKeyRetrieval(std::shared_ptr<IConnectionHandler<Server>> connection, const std::string& id);
+    void setUserEmailForVerification(const std::string& email, const std::string& userId);
+    std::string generateUniqueCode();
+    bool verifyEmailCode(const std::string& id, const std::string& code);
+    std::string getUserEmailById(const std::string& id);
+    void disableEmailAuthById(const std::string& id);
 public:
     Server(boost::asio::io_service &service);
     void handleAccept(std::shared_ptr<IConnectionHandler<Server>> connection, const boost::system::error_code& err);

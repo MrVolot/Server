@@ -2,6 +2,7 @@
 
 #include <iostream>
 #include "certificateUtils/certificateUtils.h"
+#include <random>
 
 Server::Server(io_service& service) : 
 	service_{ service },
@@ -167,6 +168,22 @@ void Server::pingClient()
 	}
 }
 
+std::string Server::getUserEmailById(const std::string& id)
+{
+	std::string query{ "SELECT EMAIL FROM CONTACTS WHERE ID = " + id };
+	auto result{ DatabaseHandler::getInstance().executeQuery(query) };
+	if (result.empty()) {
+		return "";
+	}
+	return result[0][0];
+}
+
+void Server::disableEmailAuthById(const std::string& id)
+{
+	auto query = "UPDATE CONTACTS SET AUTHENTICATION_ENABLED = 0, EMAIL = NULL, AUTHENTICATION_CODE = NULL WHERE ID = ?";
+	DatabaseHandler::getInstance().executeWithPreparedStatement(query, { id });
+}
+
 void Server::callbackReadCommand(std::shared_ptr<IConnectionHandler<Server>> connection, const boost::system::error_code& err, size_t bytes_transferred)
 {
 	if (err) {
@@ -215,6 +232,34 @@ void Server::callbackReadCommand(std::shared_ptr<IConnectionHandler<Server>> con
 		processPublicKeyRetrieval(connection, value["id"].asString());
 		return;
 	}
+	if (value["command"] == EMAIL_ADDITION) {
+		setUserEmailForVerification(value["email"].asString(), sender);
+		connection->callAsyncRead();
+		return;
+	}
+	if (value["command"] == CODE_VERIFICATION) {
+		auto verificationResult{ verifyEmailCode(sender, value["verCode"].asString()) };
+		Json::Value value;
+		Json::FastWriter writer;
+		value["command"] = CODE_VERIFICATION;
+		value["verResult"] = verificationResult;
+		connection->callWrite(writer.write(value));
+		connection->callAsyncRead();
+		return;
+	}
+	if (value["command"] == DISABLE_EMAIL_AUTH) {
+		disableEmailAuthById(sender);
+		connection->callAsyncRead();
+		return;
+	}
+}
+
+void Server::setUserEmailForVerification(const std::string& email, const std::string& userId)
+{
+	auto authCode{ generateUniqueCode() };
+	emailHandler.sendEmail(email, authCode);
+	auto query = "UPDATE CONTACTS SET AUTHENTICATION_CODE = ?, EMAIL = ? WHERE ID = ?";
+	DatabaseHandler::getInstance().executeWithPreparedStatement(query, { authCode, email, userId });
 }
 
 void Server::sendMessageToClient(const MessageInfo& messageInfo)
@@ -271,6 +316,7 @@ void Server::sendFriendList(std::shared_ptr<IConnectionHandler<Server>> connecti
 	Json::Reader reader;
 	value["command"] = FRIENDLIST;
 	value["personalId"] = std::stoull(userId);
+	value["personalEmail"] = getUserEmailById(userId);
 	value["data"] = getJsonFriendList(userId);
 	connection->callWrite(writer.write(value));
 }
@@ -439,4 +485,32 @@ void Server::deleteAccountById(const std::string& id)
 	DatabaseHandler::getInstance().executeWithPreparedStatement(query, { id });
 	query = "DROP TABLE FL_" + id;
 	DatabaseHandler::getInstance().executeQuery(query);
+}
+
+std::string Server::generateUniqueCode() {
+	std::string charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+	int length = 8; // Length of the random string
+
+	std::random_device rd;
+	std::mt19937 gen(rd());
+	std::uniform_int_distribution<> dist(0, charset.size() - 1);
+
+	std::string random_string;
+	for (int i = 0; i < length; ++i) {
+		random_string += charset[dist(gen)];
+	}
+
+	return random_string;
+}
+
+bool Server::verifyEmailCode(const std::string& id, const std::string& code) 
+{
+	std::string query{ "SELECT AUTHENTICATION_CODE FROM CONTACTS WHERE ID = " + id };
+	auto result{ DatabaseHandler::getInstance().executeQuery(query) };
+	if (!result.empty() && result[0][0] == code) {
+		query = "UPDATE CONTACTS SET AUTHENTICATION_ENABLED = 1 WHERE ID = ?";
+		DatabaseHandler::getInstance().executeWithPreparedStatement(query, { id });
+		return true;
+	}
+	return false;
 }

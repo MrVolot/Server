@@ -50,5 +50,8 @@
     <ClCompile Include="..\ThirdParty\certificateUtils\certificateUtils.cpp">
       <Filter>Исходные файлы</Filter>
     </ClCompile>
+    <ClCompile Include="..\ThirdParty\emailHandler\EmailHandler.cpp">
+      <Filter>Исходные файлы</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>

@@ -159,6 +159,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\ThirdParty\certificateUtils\certificateUtils.cpp" />
+    <ClCompile Include="..\ThirdParty\emailHandler\EmailHandler.cpp" />
     <ClCompile Include="src\Client.cpp" />
     <ClCompile Include="src\jsoncpp.cpp" />
     <ClCompile Include="src\main.cpp" />
