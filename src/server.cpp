@@ -184,6 +184,21 @@ void Server::disableEmailAuthById(const std::string& id)
 	DatabaseHandler::getInstance().executeWithPreparedStatement(query, { id });
 }
 
+void Server::sendFileToClient(const std::string receiverId, const std::string senderId, const std::string fileStream, const std::string fileName)
+{
+	auto foundUser{ connections_.find(receiverId) };
+	if (foundUser != connections_.end() && foundUser->second.first->onlineStatus) {
+		Json::Value value;
+		Json::FastWriter writer;
+		value["command"] = SEND_FILE;
+		value["receiver"] = std::to_string(foundUser->second.first->getId());
+		value["fileStream"] = fileStream;
+		value["fileName"] = fileName;
+		value["sender"] = senderId;
+		connections_.at(receiverId).second->callWrite(writer.write(value));
+	}
+}
+
 void Server::callbackReadCommand(std::shared_ptr<IConnectionHandler<Server>> connection, const boost::system::error_code& err, size_t bytes_transferred)
 {
 	if (err) {
@@ -249,6 +264,11 @@ void Server::callbackReadCommand(std::shared_ptr<IConnectionHandler<Server>> con
 	}
 	if (value["command"] == DISABLE_EMAIL_AUTH) {
 		disableEmailAuthById(sender);
+		connection->callAsyncRead();
+		return;
+	}
+	if (value["command"] == SEND_FILE) {
+		sendFileToClient(value["receiver"].asString(), sender, value["fileStream"].asString(), value["fileName"].asString());
 		connection->callAsyncRead();
 		return;
 	}
@@ -378,7 +398,18 @@ void Server::sendChatHistory(const std::string& id, Json::Value& chatHistory)
 
 void Server::createChatTable(const std::string& tableName)
 {
-	std::string query{ "CREATE TABLE " + tableName + " (ID int NOT NULL IDENTITY(1,1) PRIMARY KEY, GUID varchar(36) NOT NULL UNIQUE, SENDER varchar(255) NOT NULL, RECEIVER varchar(255) NOT NULL, MESSAGE varchar(2048) NOT NULL, SENT_TIME DATETIME DEFAULT CURRENT_TIMESTAMP)" };
+	std::string query{
+	"CREATE TABLE " + tableName + " ("
+	"ID int NOT NULL IDENTITY(1,1) PRIMARY KEY, "
+	"GUID varchar(36) NOT NULL UNIQUE, "
+	"SENDER int NOT NULL, "
+	"RECEIVER int NOT NULL, "
+	"MESSAGE varchar(2048) NOT NULL, "
+	"SENT_TIME DATETIME DEFAULT CURRENT_TIMESTAMP, "
+	"FOREIGN KEY (SENDER) REFERENCES CONTACTS(ID), "
+	"FOREIGN KEY (RECEIVER) REFERENCES CONTACTS(ID))"
+	};
+	//std::string query{ "CREATE TABLE " + tableName + " (ID int NOT NULL IDENTITY(1,1) PRIMARY KEY, GUID varchar(36) NOT NULL UNIQUE, SENDER varchar(255) NOT NULL, RECEIVER varchar(255) NOT NULL, MESSAGE varchar(2048) NOT NULL, SENT_TIME DATETIME DEFAULT CURRENT_TIMESTAMP)" };
 	DatabaseHandler::getInstance().executeQuery(query);
 }
 
@@ -448,14 +479,12 @@ void Server::verifyFriendsConnection(const std::string& sender, const std::strin
 	std::string table1{ "FL_" + sender };
 	std::string table2{ "FL_" + receiver };
 	if (!DatabaseHandler::getInstance().tableExists(table1)) {
-		
-		std::string query{ "CREATE TABLE " + table1 + " (ID int NOT NULL PRIMARY KEY, Name varchar(255) NOT NULL)" };
+		std::string query{ "CREATE TABLE " + table1 + "(ID int NOT NULL PRIMARY KEY, Name varchar(255) NOT NULL, CONSTRAINT FK_" + table1 + "_Contacts FOREIGN KEY(ID) REFERENCES CONTACTS(ID))" };
 		DatabaseHandler::getInstance().executeQuery(query);
 	}
 	insertFriendIfNeeded(table1, { std::to_string(user2->second.first->getId()), user2->second.first->getName() });
 	if (!DatabaseHandler::getInstance().tableExists(table2)) {
-		
-		std::string query{ "CREATE TABLE " + table2 + " (ID int NOT NULL PRIMARY KEY, Name varchar(255) NOT NULL)" };
+		std::string query{ "CREATE TABLE " + table2 + "(ID int NOT NULL PRIMARY KEY, Name varchar(255) NOT NULL, CONSTRAINT FK_" + table2 + "_Contacts FOREIGN KEY(ID) REFERENCES CONTACTS(ID))" };
 		DatabaseHandler::getInstance().executeQuery(query);
 	}
 	//TODO send some info that new message from new person appeared , in order to create chat widget for receiver
