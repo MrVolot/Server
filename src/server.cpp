@@ -213,6 +213,7 @@ void Server::callbackReadCommand(std::shared_ptr<IConnectionHandler<Server>> con
 	auto client{ findClientByConnection(connection) };
 	auto sender{ std::to_string(client.getId()) };
 	auto receiver{ value["receiver"].asString() };
+	auto vcheck{ value["command"].asInt() };
 	if (value["command"] == SENDMESSAGE) {
 		auto messageText{ value["message"].asString() };
 		auto messageGuid{ value["messageGuid"].asString() };
@@ -505,7 +506,9 @@ void Server::deleteMessageById(const std::string& sender, const std::string& rec
 	value["messageGuid"] = messageId;
 	value["receiver"] = receiver;
 	value["sender"] = sender;
-	connections_.at(receiver).second->callWrite(writer.write(value));
+	if (connections_.at(receiver).second != nullptr) {
+		connections_.at(receiver).second->callWrite(writer.write(value));
+	}
 }
 
 void Server::deleteAccountById(const std::string& id)
