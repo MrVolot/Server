@@ -4,6 +4,10 @@
 static const std::string checkOnline{"status"};
 static const std::string msg{ "sendMessage" };
 static const std::string tokenVerification{ "tokenVerification" };
+static const std::string ContactsTableName{ "Messenger.dbo.CONTACTS" };
+static const std::string AuthTableName{ "Messenger.dbo.AUTH" };
+static const std::string DbNamePrefix{ "Messenger.dbo." };
+static const std::string ChatTableNamePrefix{ "Messenger.dbo.CHAT_" };
 
 enum Commands {
 	CHECK_ONLINE,

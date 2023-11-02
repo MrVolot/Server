@@ -92,7 +92,7 @@ void Server::readConnection(std::shared_ptr<IConnectionHandler<Server>> connecti
 
 std::string Server::getUserPublicKey(const std::string& id)
 {
-	auto query{ "SELECT PUBLIC_KEY FROM CONTACTS WHERE ID = ?" };
+	auto query{ "SELECT PUBLIC_KEY FROM " + ContactsTableName + " WHERE ID = ? " };
 	auto result{ DatabaseHandler::getInstance().executeWithPreparedStatement(query, {id}) };
 	result.next();
 	return result.get<std::string>(0);
@@ -108,13 +108,13 @@ void Server::writeCallback(std::shared_ptr<IConnectionHandler<Server>> connectio
 
 void Server::saveUserPublicKey(const std::string& id, const std::string& publicKey)
 {
-	auto query{ "UPDATE CONTACTS SET PUBLIC_KEY = ? WHERE ID = ?" };
+	auto query{ "UPDATE " + ContactsTableName + " SET PUBLIC_KEY = ? WHERE ID = ? " };
 	DatabaseHandler::getInstance().executeWithPreparedStatement(query, { publicKey, id });
 }
 
 std::optional<std::vector<std::vector<std::string>>> Server::verificateHash(const std::string& hash)
 {
-	auto result{ databaseInstance.executeQuery("SELECT ID, LOGIN, PUBLIC_KEY FROM CONTACTS WHERE TOKEN = '" + hash + "'") };
+	auto result{ databaseInstance.executeQuery("SELECT ID, LOGIN, PUBLIC_KEY FROM " + ContactsTableName + " WHERE TOKEN = '" + hash + "'") };
 	if (result.empty()) {
 		return std::nullopt;
 	}
@@ -135,7 +135,7 @@ void Server::processPublicKeyRetrieval(std::shared_ptr<IConnectionHandler<Server
 
 void Server::loadUsers()
 {
-	auto result{ databaseInstance.executeQuery("SELECT ID, LOGIN, PUBLIC_KEY FROM CONTACTS") };
+	auto result{ databaseInstance.executeQuery("SELECT ID, LOGIN, PUBLIC_KEY FROM " + ContactsTableName) };
 	std::lock_guard<std::mutex> guard(mutex);
 	for (auto& n : result) {
 		std::unique_ptr<Client> tempClient{ new Client {n[1], std::stoull(n[0]), n[2]}};
@@ -170,7 +170,7 @@ void Server::pingClient()
 
 std::string Server::getUserEmailById(const std::string& id)
 {
-	std::string query{ "SELECT EMAIL FROM CONTACTS WHERE ID = " + id };
+	std::string query{ "SELECT EMAIL FROM " + ContactsTableName + " WHERE ID = " + id };
 	auto result{ DatabaseHandler::getInstance().executeQuery(query) };
 	if (result.empty()) {
 		return "";
@@ -180,7 +180,7 @@ std::string Server::getUserEmailById(const std::string& id)
 
 void Server::disableEmailAuthById(const std::string& id)
 {
-	auto query = "UPDATE CONTACTS SET AUTHENTICATION_ENABLED = 0, EMAIL = NULL, AUTHENTICATION_CODE = NULL WHERE ID = ?";
+	auto query = "UPDATE " + ContactsTableName + " SET AUTHENTICATION_ENABLED = 0, EMAIL = NULL, AUTHENTICATION_CODE = NULL WHERE ID = ?";
 	DatabaseHandler::getInstance().executeWithPreparedStatement(query, { id });
 }
 
@@ -279,7 +279,7 @@ void Server::setUserEmailForVerification(const std::string& email, const std::st
 {
 	auto authCode{ generateUniqueCode() };
 	emailHandler.sendEmail(email, authCode);
-	auto query = "UPDATE CONTACTS SET AUTHENTICATION_CODE = ?, EMAIL = ? WHERE ID = ?";
+	auto query = "UPDATE " + ContactsTableName + " SET AUTHENTICATION_CODE = ?, EMAIL = ? WHERE ID = ?";
 	DatabaseHandler::getInstance().executeWithPreparedStatement(query, { authCode, email, userId });
 }
 
@@ -302,7 +302,7 @@ void Server::sendMessageToClient(const MessageInfo& messageInfo)
 Json::Value Server::getJsonFriendList(const std::string& id)
 {
 	std::string tableName{ "FL_" + id };
-	std::string query{ "SELECT * FROM " + tableName };
+	std::string query{ "SELECT * FROM " + DbNamePrefix + tableName };
 	auto result{ DatabaseHandler::getInstance().executeQuery(query) };
 	if (result.empty()) {
 		return "";
@@ -322,7 +322,7 @@ Json::Value Server::getJsonFriendList(const std::string& id)
 
 std::string Server::getPublicKey(const std::string& id)
 {
-	std::string query{ "SELECT PUBLIC_KEY FROM CONTACTS WHERE ID = '" + id + "'"};
+	std::string query{ "SELECT PUBLIC_KEY FROM " + ContactsTableName + " WHERE ID = '" + id + "'"};
 	auto result{ DatabaseHandler::getInstance().executeQuery(query) };
 	if (result.empty()) {
 		return "";
@@ -407,8 +407,8 @@ void Server::createChatTable(const std::string& tableName)
 	"RECEIVER int NOT NULL, "
 	"MESSAGE varchar(2048) NOT NULL, "
 	"SENT_TIME DATETIME DEFAULT CURRENT_TIMESTAMP, "
-	"FOREIGN KEY (SENDER) REFERENCES CONTACTS(ID), "
-	"FOREIGN KEY (RECEIVER) REFERENCES CONTACTS(ID))"
+	"FOREIGN KEY (SENDER) REFERENCES " + ContactsTableName + "(ID), "
+	"FOREIGN KEY (RECEIVER) REFERENCES " + ContactsTableName + "(ID))"
 	};
 	//std::string query{ "CREATE TABLE " + tableName + " (ID int NOT NULL IDENTITY(1,1) PRIMARY KEY, GUID varchar(36) NOT NULL UNIQUE, SENDER varchar(255) NOT NULL, RECEIVER varchar(255) NOT NULL, MESSAGE varchar(2048) NOT NULL, SENT_TIME DATETIME DEFAULT CURRENT_TIMESTAMP)" };
 	DatabaseHandler::getInstance().executeQuery(query);
@@ -416,8 +416,8 @@ void Server::createChatTable(const std::string& tableName)
 
 std::string Server::generateTableName(const std::string& sender, const std::string& receiver)
 {
-	auto first{ "CHAT_" + sender + "_" + receiver };
-	auto second{ "CHAT_" + receiver + "_" + sender };
+	auto first{ ChatTableNamePrefix + sender + "_" + receiver };
+	auto second{ ChatTableNamePrefix + receiver + "_" + sender };
 	return std::stoull(sender) > std::stoull(receiver) ? first : second;
 }
 
@@ -441,7 +441,7 @@ std::optional<Json::Value> Server::tryGetContactInfo(const std::string& login)
 	//Add name retrieval
 	Json::Value finalValue;
 	if (!login.empty()) {
-		std::string query{ "SELECT ID, LOGIN FROM CONTACTS WHERE LOGIN LIKE '%" + login + "%'" };
+		std::string query{ "SELECT ID, LOGIN FROM " + ContactsTableName + " WHERE LOGIN LIKE '%" + login + "%'" };
 		auto queryResult{ DatabaseHandler::getInstance().executeQuery(query) };
 		if (queryResult.empty()) {
 			return std::nullopt;
@@ -477,15 +477,15 @@ void Server::verifyFriendsConnection(const std::string& sender, const std::strin
 {
 	auto user1{ connections_.find(sender) };
 	auto user2{ connections_.find(receiver) };
-	std::string table1{ "FL_" + sender };
-	std::string table2{ "FL_" + receiver };
+	std::string table1{ DbNamePrefix + "FL_" + sender };
+	std::string table2{ DbNamePrefix + "FL_" + receiver };
 	if (!DatabaseHandler::getInstance().tableExists(table1)) {
-		std::string query{ "CREATE TABLE " + table1 + "(ID int NOT NULL PRIMARY KEY, Name varchar(255) NOT NULL, CONSTRAINT FK_" + table1 + "_Contacts FOREIGN KEY(ID) REFERENCES CONTACTS(ID))" };
+		std::string query{ "CREATE TABLE " + table1 + "(ID int NOT NULL PRIMARY KEY, Name varchar(255) NOT NULL, CONSTRAINT FK_" + table1 + "_Contacts FOREIGN KEY(ID) REFERENCES " + ContactsTableName + "(ID))" };
 		DatabaseHandler::getInstance().executeQuery(query);
 	}
 	insertFriendIfNeeded(table1, { std::to_string(user2->second.first->getId()), user2->second.first->getName() });
 	if (!DatabaseHandler::getInstance().tableExists(table2)) {
-		std::string query{ "CREATE TABLE " + table2 + "(ID int NOT NULL PRIMARY KEY, Name varchar(255) NOT NULL, CONSTRAINT FK_" + table2 + "_Contacts FOREIGN KEY(ID) REFERENCES CONTACTS(ID))" };
+		std::string query{ "CREATE TABLE " + table2 + "(ID int NOT NULL PRIMARY KEY, Name varchar(255) NOT NULL, CONSTRAINT FK_" + table2 + "_Contacts FOREIGN KEY(ID) REFERENCES " + ContactsTableName + "(ID))" };
 		DatabaseHandler::getInstance().executeQuery(query);
 	}
 	//TODO send some info that new message from new person appeared , in order to create chat widget for receiver
@@ -513,9 +513,9 @@ void Server::deleteMessageById(const std::string& sender, const std::string& rec
 
 void Server::deleteAccountById(const std::string& id)
 {
-	std::string query{ "DELETE FROM CONTACTS WHERE ID = ?" };
+	std::string query{ "DELETE FROM " + ContactsTableName + " WHERE ID = ?" };
 	DatabaseHandler::getInstance().executeWithPreparedStatement(query, { id });
-	query = "DROP TABLE FL_" + id;
+	query = "DROP TABLE " + DbNamePrefix + "FL_" + id;
 	DatabaseHandler::getInstance().executeQuery(query);
 }
 
@@ -537,10 +537,10 @@ std::string Server::generateUniqueCode() {
 
 bool Server::verifyEmailCode(const std::string& id, const std::string& code) 
 {
-	std::string query{ "SELECT AUTHENTICATION_CODE FROM CONTACTS WHERE ID = " + id };
+	std::string query{ "SELECT AUTHENTICATION_CODE FROM " + ContactsTableName + " WHERE ID = " + id };
 	auto result{ DatabaseHandler::getInstance().executeQuery(query) };
 	if (!result.empty() && result[0][0] == code) {
-		query = "UPDATE CONTACTS SET AUTHENTICATION_ENABLED = 1 WHERE ID = ?";
+		query = "UPDATE " + ContactsTableName + " SET AUTHENTICATION_ENABLED = 1 WHERE ID = ?";
 		DatabaseHandler::getInstance().executeWithPreparedStatement(query, { id });
 		return true;
 	}
