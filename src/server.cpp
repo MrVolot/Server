@@ -95,6 +95,7 @@ std::string Server::getUserPublicKey(const std::string& id)
 	auto query{ "SELECT PUBLIC_KEY FROM " + ContactsTableName + " WHERE ID = ? " };
 	auto result{ DatabaseHandler::getInstance().executeWithPreparedStatement(query, {id}) };
 	result.next();
+	//TODO: Verify if it is not null. If it is null and we try to get values, it will throw.
 	return result.get<std::string>(0);
 }
 
@@ -357,8 +358,8 @@ std::string Server::saveMessageToDatabase(const std::string& messageGuid, const 
 	if (!DatabaseHandler::getInstance().tableExists(tableName)) {
 		createChatTable(tableName);
 	}
-	auto query{ "INSERT INTO " + tableName + " OUTPUT INSERTED.SENT_TIME VALUES(?, ?, ?, ?, Getdate())" };
-	auto result{ DatabaseHandler::getInstance().executeWithPreparedStatement(query, {messageGuid, sender, receiver, msg})};
+	auto query{ "INSERT INTO " + tableName + " OUTPUT INSERTED.SENT_TIME VALUES('" + messageGuid + "', " + sender + ", " + receiver + ", '" + msg + "', Getdate())" };
+	auto result{ DatabaseHandler::getInstance().executeDbcQuery(query)};
 	result.next();
 	return result.get<std::string>(0);
 }
@@ -410,7 +411,6 @@ void Server::createChatTable(const std::string& tableName)
 	"FOREIGN KEY (SENDER) REFERENCES " + ContactsTableName + "(ID), "
 	"FOREIGN KEY (RECEIVER) REFERENCES " + ContactsTableName + "(ID))"
 	};
-	//std::string query{ "CREATE TABLE " + tableName + " (ID int NOT NULL IDENTITY(1,1) PRIMARY KEY, GUID varchar(36) NOT NULL UNIQUE, SENDER varchar(255) NOT NULL, RECEIVER varchar(255) NOT NULL, MESSAGE varchar(2048) NOT NULL, SENT_TIME DATETIME DEFAULT CURRENT_TIMESTAMP)" };
 	DatabaseHandler::getInstance().executeQuery(query);
 }
 
@@ -469,8 +469,8 @@ void Server::sendPossibleContactsInfo(std::shared_ptr<IConnectionHandler<Server>
 
 void Server::insertFriendIfNeeded(const std::string& tableName, std::pair<const std::string&, const std::string&> value)
 {
-	std::string query{ "IF NOT EXISTS (SELECT * FROM " + tableName + " WHERE ID = ?) BEGIN INSERT INTO " + tableName + " VALUES(?, ?) END" };
-	DatabaseHandler::getInstance().executeWithPreparedStatement(query, { value.first, value.first, value.second});
+	std::string query{ "IF NOT EXISTS (SELECT * FROM " + tableName + " WHERE ID = " + value.first + ") BEGIN INSERT INTO " + tableName + " VALUES("+ value.first + " , '" + value.second + "' ) END" };
+	DatabaseHandler::getInstance().executeDbcQuery(query);
 }
 
 void Server::verifyFriendsConnection(const std::string& sender, const std::string& receiver)
