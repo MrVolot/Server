@@ -537,10 +537,12 @@ void Server::editMessageById(const std::string& sender, const std::string& recei
 
 void Server::deleteAccountById(const std::string& id)
 {
-	std::string query{ "DELETE FROM " + ContactsTableName + " WHERE ID = ?" };
-	DatabaseHandler::getInstance().executeWithPreparedStatement(query, { id });
+	std::string query = "DELETE FROM " + AuthTableName + " WHERE USERID = " + id;
+	DatabaseHandler::getInstance().executeDbcQuery(query);
+	query = "DELETE FROM " + ContactsTableName + " WHERE ID = " + id;
+	DatabaseHandler::getInstance().executeDbcQuery(query);
 	query = "DROP TABLE " + DbNamePrefix + "FL_" + id;
-	DatabaseHandler::getInstance().executeQuery(query);
+	DatabaseHandler::getInstance().executeDbcQuery(query);
 }
 
 std::string Server::generateUniqueCode() {
