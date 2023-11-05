@@ -274,6 +274,11 @@ void Server::callbackReadCommand(std::shared_ptr<IConnectionHandler<Server>> con
 		connection->callAsyncRead();
 		return;
 	}
+	if (value["command"] == EDIT_MESSAGE) {
+		editMessageById(sender, value["receiverId"].asString(), value["newText"].asString(), value["messageGuid"].asString());
+		connection->callAsyncRead();
+		return;
+	}
 }
 
 void Server::setUserEmailForVerification(const std::string& email, const std::string& userId)
@@ -506,6 +511,25 @@ void Server::deleteMessageById(const std::string& sender, const std::string& rec
 	value["messageGuid"] = messageId;
 	value["receiver"] = receiver;
 	value["sender"] = sender;
+	if (connections_.at(receiver).second != nullptr) {
+		connections_.at(receiver).second->callWrite(writer.write(value));
+	}
+}
+
+void Server::editMessageById(const std::string& sender, const std::string& receiver, const std::string& newText, const std::string& messageId)
+{
+	auto tableName{ generateTableName(sender, receiver) };
+	std::string query{ "UPDATE " + tableName + " SET MESSAGE = '" + newText + "' WHERE [GUID] = '" + messageId + "'"};
+	DatabaseHandler::getInstance().executeDbcQuery(query);
+
+	Json::Value value;
+	Json::FastWriter writer;
+	value["command"] = EDIT_MESSAGE;
+	value["messageGuid"] = messageId;
+	value["receiverId"] = receiver;
+	value["senderId"] = sender;
+	value["newText"] = newText;
+
 	if (connections_.at(receiver).second != nullptr) {
 		connections_.at(receiver).second->callWrite(writer.write(value));
 	}

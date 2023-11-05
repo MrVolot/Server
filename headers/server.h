@@ -40,6 +40,7 @@ class Server
     std::string getPublicKey(const std::string& id);
     void deleteMessageById(const std::string& sender, const std::string& receiver, const std::string& messageId);
     void deleteAccountById(const std::string& id);
+    void editMessageById(const std::string& sender, const std::string& receiver, const std::string& newText, const std::string& messageId);
     std::string getUserPublicKey(const std::string& id);
     void saveUserPublicKey(const std::string& id, const std::string& publicKey);
     void processPublicKeyRetrieval(std::shared_ptr<IConnectionHandler<Server>> connection, const std::string& id);

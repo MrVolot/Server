@@ -43,3 +43,4 @@ struct MessageInfo {
 #define CODE_VERIFICATION 0x0009
 #define DISABLE_EMAIL_AUTH 0x000A
 #define SEND_FILE 0x000B
+#define EDIT_MESSAGE 0x000C
