@@ -44,3 +44,4 @@ struct MessageInfo {
 #define DISABLE_EMAIL_AUTH 0x000A
 #define SEND_FILE 0x000B
 #define EDIT_MESSAGE 0x000C
+#define CHANGE_PASSWORD 0x000D

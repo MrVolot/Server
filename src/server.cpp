@@ -200,6 +200,12 @@ void Server::sendFileToClient(const std::string receiverId, const std::string se
 	}
 }
 
+void Server::changePasswordById(const std::string& id, const std::string& newPassword)
+{
+	auto query = "UPDATE " + ContactsTableName + " SET PASSWORD = " + newPassword + " WHERE ID = " + id;
+	DatabaseHandler::getInstance().executeDbcQuery(query);
+}
+
 void Server::callbackReadCommand(std::shared_ptr<IConnectionHandler<Server>> connection, const boost::system::error_code& err, size_t bytes_transferred)
 {
 	if (err) {
@@ -276,6 +282,11 @@ void Server::callbackReadCommand(std::shared_ptr<IConnectionHandler<Server>> con
 	}
 	if (value["command"] == EDIT_MESSAGE) {
 		editMessageById(sender, value["receiverId"].asString(), value["newText"].asString(), value["messageGuid"].asString());
+		connection->callAsyncRead();
+		return;
+	}
+	if (value["command"] == CHANGE_PASSWORD) {
+		changePasswordById(sender, value["newPassword"].asString());
 		connection->callAsyncRead();
 		return;
 	}
