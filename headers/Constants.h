@@ -45,3 +45,4 @@ struct MessageInfo {
 #define SEND_FILE 0x000B
 #define EDIT_MESSAGE 0x000C
 #define CHANGE_PASSWORD 0x000D
+#define UPDATE_AVATAR 0x000E

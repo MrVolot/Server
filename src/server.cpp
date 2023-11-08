@@ -202,7 +202,13 @@ void Server::sendFileToClient(const std::string receiverId, const std::string se
 
 void Server::changePasswordById(const std::string& id, const std::string& newPassword)
 {
-	auto query = "UPDATE " + ContactsTableName + " SET PASSWORD = " + newPassword + " WHERE ID = " + id;
+	auto query = "UPDATE " + ContactsTableName + " SET PASSWORD = '" + newPassword + "' WHERE ID = " + id;
+	DatabaseHandler::getInstance().executeDbcQuery(query);
+}
+
+void Server::changeAvatarById(const std::string& id, const std::string& photoStream)
+{
+	auto query = "UPDATE " + ContactsTableName + " SET PHOTOSTREAM = '" + photoStream + "' WHERE ID = " + id;
 	DatabaseHandler::getInstance().executeDbcQuery(query);
 }
 
@@ -287,6 +293,12 @@ void Server::callbackReadCommand(std::shared_ptr<IConnectionHandler<Server>> con
 	}
 	if (value["command"] == CHANGE_PASSWORD) {
 		changePasswordById(sender, value["newPassword"].asString());
+		connection->callAsyncRead();
+		return;
+	}
+	if (value["command"] == UPDATE_AVATAR) {
+		// For now Server will not handle this
+		//changeAvatarById(sender, value["photoStream"].asString());
 		connection->callAsyncRead();
 		return;
 	}
