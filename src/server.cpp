@@ -130,7 +130,8 @@ void Server::processPublicKeyRetrieval(std::shared_ptr<IConnectionHandler<Server
 	tmpValue["id"] = id;
 	tmpValue["userPublicKey"] = publicKey;
 	Json::StreamWriterBuilder writer;
-	connection->callWrite(Json::writeString(writer, tmpValue));
+	auto sendValue{ Json::writeString(writer, tmpValue) };
+	connection->callWrite(sendValue);
 	connection->callAsyncRead();
 }
 
@@ -324,6 +325,7 @@ void Server::sendMessageToClient(const MessageInfo& messageInfo)
 		value["message"] = messageInfo.messageText;
 		value["sender"] = messageInfo.senderId;
 		value["time"] = messageInfo.sentTime;
+		value["senderName"] = connections_.at(messageInfo.senderId).first->getName();
 		connections_.at(messageInfo.receiverId).second->callWrite(writer.write(value));
 	}
 }
@@ -508,13 +510,13 @@ void Server::verifyFriendsConnection(const std::string& sender, const std::strin
 	std::string table1{ DbNamePrefix + "FL_" + sender };
 	std::string table2{ DbNamePrefix + "FL_" + receiver };
 	if (!DatabaseHandler::getInstance().tableExists(table1)) {
-		std::string query{ "CREATE TABLE " + table1 + "(ID int NOT NULL PRIMARY KEY, Name varchar(255) NOT NULL, CONSTRAINT FK_" + table1 + "_Contacts FOREIGN KEY(ID) REFERENCES " + ContactsTableName + "(ID))" };
-		DatabaseHandler::getInstance().executeQuery(query);
+		std::string query{ "CREATE TABLE " + table1 + "(ID int NOT NULL PRIMARY KEY, Name varchar(255) NOT NULL, CONSTRAINT FK_FL_" + sender + "_Contacts FOREIGN KEY(ID) REFERENCES " + ContactsTableName + "(ID))" };
+		DatabaseHandler::getInstance().executeDbcQuery(query);
 	}
 	insertFriendIfNeeded(table1, { std::to_string(user2->second.first->getId()), user2->second.first->getName() });
 	if (!DatabaseHandler::getInstance().tableExists(table2)) {
-		std::string query{ "CREATE TABLE " + table2 + "(ID int NOT NULL PRIMARY KEY, Name varchar(255) NOT NULL, CONSTRAINT FK_" + table2 + "_Contacts FOREIGN KEY(ID) REFERENCES " + ContactsTableName + "(ID))" };
-		DatabaseHandler::getInstance().executeQuery(query);
+		std::string query{ "CREATE TABLE " + table2 + "(ID int NOT NULL PRIMARY KEY, Name varchar(255) NOT NULL, CONSTRAINT FK_FL" + receiver + "_Contacts FOREIGN KEY(ID) REFERENCES " + ContactsTableName + "(ID))" };
+		DatabaseHandler::getInstance().executeDbcQuery(query);
 	}
 	//TODO send some info that new message from new person appeared , in order to create chat widget for receiver
 	//it friend didn't exist and was inserted, we must send info to create chat
