@@ -46,3 +46,4 @@ struct MessageInfo {
 #define EDIT_MESSAGE 0x000C
 #define CHANGE_PASSWORD 0x000D
 #define UPDATE_AVATAR 0x000E
+#define DELETE_CHAT 0x000F

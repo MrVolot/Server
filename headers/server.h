@@ -52,6 +52,7 @@ class Server
     void sendFileToClient(const std::string receiverId, const std::string senderId, const std::string fileStream, const std::string fileName);
     void changePasswordById(const std::string& id, const std::string& newPassword);
     void changeAvatarById(const std::string& id, const std::string& photoStream);
+    void processChatDeletion(const std::string& senderId, unsigned long long receiverId);
 public:
     Server(boost::asio::io_service &service);
     void handleAccept(std::shared_ptr<IConnectionHandler<Server>> connection, const boost::system::error_code& err);

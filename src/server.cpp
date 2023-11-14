@@ -213,6 +213,24 @@ void Server::changeAvatarById(const std::string& id, const std::string& photoStr
 	DatabaseHandler::getInstance().executeDbcQuery(query);
 }
 
+void Server::processChatDeletion(const std::string& senderId, unsigned long long receiverId)
+{
+	auto receiverIdStr{ std::to_string(receiverId) };
+	std::string tableName{ generateTableName(senderId, receiverIdStr) };
+	std::string dropQuery{"DROP TABLE IF EXISTS " + generateTableName(senderId, receiverIdStr)};
+	DatabaseHandler::getInstance().executeDbcQuery(dropQuery);
+	DatabaseHandler::getInstance().executeDbcQuery("DELETE FROM " + DbNamePrefix + "FL_" + senderId + " WHERE ID = " + receiverIdStr);
+	DatabaseHandler::getInstance().executeDbcQuery("DELETE FROM " + DbNamePrefix + "FL_" + receiverIdStr + " WHERE ID = " + senderId);
+	auto foundUser{ connections_.find(receiverIdStr) };
+	if (foundUser != connections_.end() && foundUser->second.first->onlineStatus) {
+		Json::Value value;
+		Json::FastWriter writer;
+		value["command"] = DELETE_CHAT;
+		value["chatId"] = std::stoull(senderId);
+		connections_.at(receiverIdStr).second->callWrite(writer.write(value));
+	}
+}
+
 void Server::callbackReadCommand(std::shared_ptr<IConnectionHandler<Server>> connection, const boost::system::error_code& err, size_t bytes_transferred)
 {
 	if (err) {
@@ -300,6 +318,11 @@ void Server::callbackReadCommand(std::shared_ptr<IConnectionHandler<Server>> con
 	if (value["command"] == UPDATE_AVATAR) {
 		// For now Server will not handle this
 		//changeAvatarById(sender, value["photoStream"].asString());
+		connection->callAsyncRead();
+		return;
+	}
+	if (value["command"] == DELETE_CHAT) {
+		processChatDeletion(sender, value["chatId"].asUInt());
 		connection->callAsyncRead();
 		return;
 	}
