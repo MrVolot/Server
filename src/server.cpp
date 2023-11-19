@@ -587,9 +587,22 @@ void Server::deleteAccountById(const std::string& id)
 {
 	std::string query = "DELETE FROM " + AuthTableName + " WHERE USERID = " + id;
 	DatabaseHandler::getInstance().executeDbcQuery(query);
-	query = "DELETE FROM " + ContactsTableName + " WHERE ID = " + id;
-	DatabaseHandler::getInstance().executeDbcQuery(query);
+
+	query = "SELECT ID FROM " + DbNamePrefix + "FL_" + id;
+	auto results = DatabaseHandler::getInstance().executeDbcQuery(query);
+	while (results.next()) {
+		long friendId = results.get<long>(0);
+		auto tmpQuery{ "DELETE FROM " + DbNamePrefix + "FL_" + std::to_string(friendId) + " WHERE ID = " + id};
+		DatabaseHandler::getInstance().executeDbcQuery(tmpQuery);
+		auto tableName{ generateTableName(std::to_string(friendId), id) };
+		query = "DROP TABLE " + tableName;
+		DatabaseHandler::getInstance().executeDbcQuery(query);
+	}
+
 	query = "DROP TABLE " + DbNamePrefix + "FL_" + id;
+	DatabaseHandler::getInstance().executeDbcQuery(query);
+
+	query = "DELETE FROM " + ContactsTableName + " WHERE ID = " + id;
 	DatabaseHandler::getInstance().executeDbcQuery(query);
 }
 
